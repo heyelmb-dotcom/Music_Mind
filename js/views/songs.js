@@ -1,5 +1,5 @@
 // Repertoire list, song anatomy view and the song-map editor.
-import { h, mount, toast, select, download, pickFile } from '../ui.js';
+import { h, mount, ask, toast, select, download, pickFile } from '../ui.js';
 import { allSongs, songById, isUnlocked, missingFor, saveSong, deleteSong } from '../library.js';
 import { LAYERS, blankSong, SONGS } from '../data/songs.js';
 import { conceptById } from '../data/concepts.js';
@@ -141,7 +141,7 @@ export function renderEditor(el, id) {
 
   function draw() {
     mount(el, h('section', { class: 'page editor' },
-      h('header', { class: 'hero' }, h('a', { class: 'back', href: `#/song/${song.id}`, onclick: (e) => { if (dirty && !confirm('Leave without saving?')) e.preventDefault(); } }, '← Back'),
+      h('header', { class: 'hero' }, h('a', { class: 'back', href: `#/song/${song.id}`, onclick: async (e) => { if (!dirty) return; e.preventDefault(); if (await ask('Leave without saving your changes?', 'Leave')) location.hash = `#/song/${song.id}`; } }, '← Back'),
         h('h1', {}, 'Map: ' + song.title)),
       h('div', { class: 'form' },
         field('Title', text(song, 'title')),
@@ -180,8 +180,8 @@ export function renderEditor(el, id) {
       h('div', { class: 'actions sticky' },
         h('button', { class: 'btn primary', onclick: () => { saveSong(song); dirty = false; toast('Saved'); location.hash = `#/song/${song.id}`; } }, 'Save'),
         song.custom
-          ? h('button', { class: 'btn ghost', onclick: () => { if (confirm('Delete this song map?')) { deleteSong(song); location.hash = '#/songs'; } } }, 'Delete')
-          : h('button', { class: 'btn ghost', onclick: () => { if (confirm('Throw away your edits and go back to the original draft?')) { deleteSong(song); location.hash = `#/song/${song.id}`; } } }, 'Revert to draft'))));
+          ? h('button', { class: 'btn ghost', onclick: async () => { if (await ask('Delete this song map?')) { deleteSong(song); location.hash = '#/songs'; } } }, 'Delete')
+          : h('button', { class: 'btn ghost', onclick: async () => { if (await ask('Throw away your edits and go back to the original draft?')) { deleteSong(song); location.hash = `#/song/${song.id}`; } } }, 'Revert to draft'))));
   }
   draw();
 }

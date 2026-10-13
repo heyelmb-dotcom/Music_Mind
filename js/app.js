@@ -1,5 +1,5 @@
 // App shell: hash router + bottom navigation.
-import { h, mount, sheet, toast, download, pickFile } from './ui.js';
+import { h, mount, ask, sheet, toast, download, pickFile } from './ui.js';
 import * as studio from './views/studio.js';
 import * as path from './views/path.js';
 import * as ear from './views/ear.js';
@@ -52,7 +52,7 @@ function settings() {
         if (!txt) return;
         try { importAll(txt); toast('Restored'); route(); } catch (_) { toast('Not a Music Mind backup'); }
       } }, 'Restore backup'),
-      h('button', { class: 'btn ghost', onclick: () => { if (confirm('Reset all earned concepts? Songs will lock again. Maps, journal and projects are kept.')) { resetProgress(); toast('Progress reset'); route(); } } }, 'Reset progress')),
+      h('button', { class: 'btn ghost', onclick: async () => { if (await ask('Reset all earned concepts? Songs will lock again. Maps, journal and projects are kept.')) { resetProgress(); toast('Progress reset'); route(); } } }, 'Reset progress')),
     h('h4', {}, 'Put it on your phone'),
     h('p', {}, 'iPhone: open this page in Safari → Share → Add to Home Screen. Android: Chrome menu → Install app. It then runs full-screen and works offline.'),
     h('p', { class: 'hint' }, 'If you hear nothing on iPhone, check the volume. The app asks iOS to ignore the silent switch, but older iOS versions still obey it.')));

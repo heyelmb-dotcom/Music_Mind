@@ -95,3 +95,16 @@ export const select = (value, options, onchange, attrs = {}) =>
       const [v, label] = Array.isArray(o) ? o : [o, o];
       return h('option', { value: v, selected: String(v) === String(value) }, label);
     }));
+
+// In-app confirmation (native confirm() is unreliable in embedded/installed contexts).
+export function ask(message, okLabel = 'OK') {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const close = sheet('Are you sure?', h('div', { class: 'menu' },
+      h('p', {}, message),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: () => { finish(true); close(); } }, okLabel),
+        h('button', { class: 'btn', onclick: () => close() }, 'Cancel'))), { onClose: () => finish(false) });
+  });
+}

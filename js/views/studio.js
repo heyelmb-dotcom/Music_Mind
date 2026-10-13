@@ -1,5 +1,5 @@
 // The Studio: 8-track step sequencer sandbox.
-import { h, mount, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
+import { h, mount, ask, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
 import { NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
 import { newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND } from '../project.js';
 import { Player } from '../sequencer.js';
@@ -315,10 +315,10 @@ function projectMenu() {
     h('h4', {}, 'On this device'),
     h('div', { class: 'row' },
       h('button', { class: 'btn', onclick: () => { update((s) => { s.saved[p.name] = clone(p); }); toast(`Saved "${p.name}"`); close(); } }, 'Save'),
-      h('button', { class: 'btn', onclick: () => { if (confirm('Start a new empty project? (Unsaved changes will be lost.)')) { loadProject(newProject({ name: 'Untitled', bars: 4, chords: ['I', 'V', 'vi', 'IV'] })); close(); render(); } } }, 'New')),
+      h('button', { class: 'btn', onclick: async () => { if (await ask('Start a new empty project? (Unsaved changes will be lost.)')) { loadProject(newProject({ name: 'Untitled', bars: 4, chords: ['I', 'V', 'vi', 'IV'] })); close(); render(); } } }, 'New')),
     Object.keys(st.saved).length ? h('div', { class: 'list' }, Object.keys(st.saved).map((name) => h('div', { class: 'list-item' },
       h('button', { class: 'link', onclick: () => { loadProject(st.saved[name]); close(); render(); } }, name),
-      h('button', { class: 'btn ghost small', onclick: () => { if (confirm(`Delete "${name}"?`)) { update((s) => { delete s.saved[name]; }); close(); } } }, 'Delete')))) : null,
+      h('button', { class: 'btn ghost small', onclick: async () => { if (await ask(`Delete "${name}"?`)) { update((s) => { delete s.saved[name]; }); close(); } } }, 'Delete')))) : null,
     h('h4', {}, 'Concept demos'),
     h('div', { class: 'row wrap' }, Object.entries(DEMOS).map(([id, d]) => h('button', { class: 'chip wide', onclick: () => { loadProject(fromSketch(d), 'demo:' + id); close(); render(); } }, d.name))),
     h('h4', {}, 'Style sketches (from unlocked songs)'),
