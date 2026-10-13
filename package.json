@@ -1,0 +1,9 @@
+{
+  "name": "music-mind",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server -c-1 -p 8080 .",
+    "test": "node --test test/*.test.js"
+  }
+}
