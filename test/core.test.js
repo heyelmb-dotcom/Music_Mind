@@ -98,3 +98,28 @@ test('build trials pass on their demos and fail on an empty project', () => {
   const good = fromSketch({ bars: 1, spb: 16, tracks: { kick: { p: 'x.......' }, snare: { p: '....x...' } } });
   assert.equal(conceptById('backbeat').trial.check(good).ok, true);
 });
+
+test('bass lab: every variant builds, lines up and labels its notes', async () => {
+  const { BASS_LESSONS, lessonSketch, bassFrom } = await import('../js/data/bass.js');
+  const { bassRole } = await import('../js/theory.js');
+  assert.equal(bassFrom(['I', 'V'], 'R . 5 . 3 . A .'), '0 . 7 . 4 . 6 . 7 . 14 . 11 . 11 .');
+  assert.equal(bassRole(11, 'V'), '3');
+  assert.equal(bassRole(6, 'I', 'V'), '→');
+  for (const l of BASS_LESSONS) for (const v of l.variants) {
+    const p = fromSketch(lessonSketch(l, v));
+    assert.equal(p.tracks.find((t) => t.id === 'bass').steps.length, p.bars * p.spb);
+  }
+  const pocket = conceptById('pocket');
+  const locked = BASS_LESSONS.find((l) => l.id === 'kick');
+  assert.equal(pocket.trial.check(fromSketch(lessonSketch(locked, locked.variants[0]))).ok, true);
+  assert.equal(pocket.trial.check(fromSketch(lessonSketch(locked, locked.variants[1]))).ok, false);
+});
+
+test('notes are spelled the way the key spells them', async () => {
+  const { spell, chordSymbol } = await import('../js/theory.js');
+  assert.equal(spell(8, 4), 'G#');           // E major
+  assert.equal(spell(10, 5), 'Bb');          // F major
+  assert.equal(spell(3, 0, 'minor'), 'Eb');  // C minor (relative Eb major)
+  assert.equal(chordSymbol('V', 4), 'B');
+  assert.equal(chordSymbol('iii', 4), 'G#m');
+});

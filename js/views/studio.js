@@ -1,6 +1,6 @@
 // The Studio: 8-track step sequencer sandbox.
 import { h, mount, ask, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
-import { NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
+import { bassRole, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
 import { newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio, trigger, getAnalyser, getCtx } from '../audio.js';
@@ -72,6 +72,8 @@ async function previewChord(r) {
   chordMidi(r, project.key, 55).forEach((n) => trigger('epiano', t, n, 0.8, 0.5));
 }
 
+const keyedName = (midi) => spell(midi, project.key, project.mode) + (Math.floor(midi / 12) - 1);
+
 const melodicMidi = (tr, row) => BASE_MIDI[tr.kind] + project.key + row + tr.octave * 12;
 
 // ---------- Transport ----------
@@ -104,7 +106,7 @@ function chordLane() {
     h('div', { class: 'lane-label' }, 'Chords'),
     h('div', { class: 'chord-cells' },
       p.chords.map((r, i) => h('button', { class: 'chord-cell' + (i === page ? ' cur' : ''), onclick: () => chordPicker(i) },
-        h('b', {}, r), h('small', {}, chordSymbol(r, p.key))))));
+        h('b', {}, r), h('small', {}, chordSymbol(r, p.key, p.mode))))));
 }
 
 function chordPicker(bar) {
@@ -117,7 +119,7 @@ function chordPicker(bar) {
   };
   const row = (label, list) => h('div', { class: 'pick-row' }, h('div', { class: 'pick-label' }, label),
     h('div', { class: 'pick-grid' }, list.map((r) => h('button', { class: 'chip' + (p.chords[bar] === r ? ' on' : ''), onclick: () => choose(r) },
-      h('b', {}, r), h('small', {}, chordSymbol(r, p.key))))));
+      h('b', {}, r), h('small', {}, chordSymbol(r, p.key, p.mode))))));
   const body = h('div', {},
     row(`Diatonic (${SCALE_LABELS[p.mode]})`, diatonicChords(p.mode)),
     row('Diatonic 7ths', diatonicChords(p.mode, true)),
@@ -149,7 +151,7 @@ function trackRow(tr) {
     cells.push(h('button', {
       class: stepClass(i, v, on),
       'data-s': s,
-      title: isMelodic(tr) && on ? noteName(melodicMidi(tr, v)) : '',
+      title: isMelodic(tr) && on ? keyedName(melodicMidi(tr, v)) : '',
       onclick: () => {
         if (tr.kind === 'drum' || tr.kind === 'chords') {
           tr.steps[s] = !v ? 1 : v === 1 ? 0.5 : 0;
@@ -161,7 +163,7 @@ function trackRow(tr) {
         selected = tr.id;
         commit();
       },
-    }, isMelodic(tr) && on ? h('i', {}, NOTE_NAMES[mod12(p.key + v)]) : null));
+    }, isMelodic(tr) && on ? h('i', {}, tr.kind === 'bass' ? bassRole(v, p.chords[Math.floor(s / p.spb)], p.chords[(Math.floor(s / p.spb) + 1) % p.bars]) : spell(p.key + v, p.key, p.mode)) : null));
   }
   return h('div', { class: `track layer-${tr.layer}` + (tr.id === selected ? ' sel' : '') + (tr.mute ? ' muted' : '') },
     h('div', { class: 'track-head' },
@@ -245,13 +247,13 @@ function pianoRoll(tr) {
       } }));
     }
     rows.push(h('div', { class: 'roll-row' + (inside ? '' : ' out') },
-      h('button', { class: 'roll-key' + (isRoot ? ' root' : ''), onclick: () => { tr._lastRow = r; preview(tr, midi); } }, noteName(midi)),
+      h('button', { class: 'roll-key' + (isRoot ? ' root' : ''), onclick: () => { tr._lastRow = r; preview(tr, midi); } }, keyedName(midi)),
       h('div', { class: 'steps', style: { gridTemplateColumns: `repeat(${p.spb}, 1fr)` } }, cells)));
   }
   return h('div', { class: 'roll' },
     h('div', { class: 'roll-tools' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: scaleLock, onchange: (e) => { scaleLock = e.target.checked; render(); } }), ' Scale lock'),
-      h('span', { class: 'hint' }, `Bar ${page + 1} · chord ${p.chords[page]} (${chordSymbol(p.chords[page], p.key)}) · highlighted rows are the key note`)),
+      h('span', { class: 'hint' }, `Bar ${page + 1} · chord ${p.chords[page]} (${chordSymbol(p.chords[page], p.key, p.mode)}) · highlighted rows are the key note`)),
     rows);
 }
 

@@ -1,6 +1,6 @@
 // Ear drills: free practice and concept trials.
 import { h, mount, toast } from '../ui.js';
-import { DRILLS, PROGRESSIONS, BANDS } from '../drills.js';
+import { DRILLS, PROGRESSIONS, BANDS, BASS_TONES } from '../drills.js';
 import { INTERVALS, QUALITIES } from '../theory.js';
 import { conceptById } from '../data/concepts.js';
 import { markPassed, isPassed } from '../store.js';
@@ -13,6 +13,7 @@ const ALL_OPTIONS = {
   quality: Object.entries(QUALITIES).map(([k, v]) => [k, v.label]),
   progression: Object.entries(PROGRESSIONS).map(([k, v]) => [k, v.label]),
   eq: BANDS.map((b) => [b.id, b.label]),
+  basstone: BASS_TONES.map((b) => [b.id, b.label]),
   dropout: [['kick', 'Kick'], ['snare', 'Snare/Clap'], ['hat', 'Hats'], ['bass', 'Bass'], ['chords', 'Chords'], ['lead', 'Lead']],
 };
 
@@ -21,8 +22,8 @@ export function renderList(el) {
     h('section', { class: 'page' },
       h('header', { class: 'hero' }, h('h1', {}, 'Ear'),
         h('p', {}, 'Free practice: no gates and no tallies. Trials live on the Path.')),
-      ['musical', 'production'].map((side) => h('div', {},
-        h('h2', { class: 'section-title' }, side === 'musical' ? 'Musical ears' : 'Production ears'),
+      ['bass', 'musical', 'production'].map((side) => h('div', {},
+        h('h2', { class: 'section-title' }, { bass: 'Bass ears', musical: 'Musical ears', production: 'Production ears' }[side]),
         h('div', { class: 'cards' }, Object.entries(DRILLS).filter(([, d]) => d.side === side).map(([id, d]) =>
           h('a', { class: 'card', href: `#/drill/${id}` }, h('h3', {}, d.title), h('p', {}, d.about))))))));
 }
@@ -95,7 +96,7 @@ export function renderDrill(el, id, params) {
       h('div', { class: 'drill' },
         h('div', { class: 'row' },
           h('button', { class: 'btn big', onclick: () => q.play() }, '▶ Replay'),
-          q.reference && h('button', { class: 'btn', onclick: () => q.reference() }, id === 'eq' ? 'Flat reference' : 'Full loop')),
+          q.reference && h('button', { class: 'btn', onclick: () => q.reference() }, { eq: 'Flat reference', basstone: 'Hear the root' }[id] || 'Full loop')),
         h('div', { class: 'options' }, q.options.map((o) => {
           let cls = 'opt';
           if (answered) {

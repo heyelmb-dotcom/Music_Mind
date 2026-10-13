@@ -4,6 +4,7 @@ import * as studio from './views/studio.js';
 import * as path from './views/path.js';
 import * as ear from './views/ear.js';
 import * as songs from './views/songs.js';
+import * as bass from './views/bass.js';
 import { exportAll, importAll, resetProgress } from './store.js';
 import { stopBus } from './audio.js';
 
@@ -12,6 +13,7 @@ const nav = document.getElementById('nav');
 
 const TABS = [
   ['path', 'Path', '◇'],
+  ['bass', 'Bass', '♩'],
   ['studio', 'Studio', '▦'],
   ['ear', 'Ear', '◉'],
   ['songs', 'Songs', '♫'],
@@ -27,11 +29,13 @@ function route() {
   const params = new URLSearchParams(query || '');
   if (name !== 'studio') studio.unmount();
   if (name === 'drill' && studio.player.playing) studio.player.stop();
+  if (!(name === 'bass' && arg)) bass.stop();
   const active = { drill: 'ear', song: 'songs', edit: 'songs' }[name] || name;
   mount(nav, TABS.map(([id, label, icon]) => h('a', { href: `#/${id}`, class: id === active ? 'on' : '' }, h('span', { class: 'ico' }, icon), label)),
     h('button', { class: 'nav-more', onclick: settings, 'aria-label': 'Settings' }, h('span', { class: 'ico' }, '⚙'), 'More'));
   switch (name) {
     case 'studio': studio.render(view); break;
+    case 'bass': arg ? bass.renderLesson(view, arg) : bass.renderList(view); break;
     case 'ear': ear.renderList(view); break;
     case 'drill': cleanup = ear.renderDrill(view, arg, params); break;
     case 'songs': songs.renderList(view); break;

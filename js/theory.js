@@ -67,6 +67,16 @@ export const INTERVALS = [
 ];
 
 export const mod12 = (n) => ((n % 12) + 12) % 12;
+
+const SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const FLATS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+const MINOR_LIKE = { minor: 3, dorian: 10, phrygian: 8, harmonicMinor: 3, mixolydian: 5, lydian: 7, major: 0 };
+// Spell a pitch class the way the key would: sharps in E major, flats in F major.
+export function spell(pc, keyPc = 0, mode = 'major') {
+  const relMajor = mod12(keyPc + (MINOR_LIKE[mode] ?? 0));
+  const flatKey = [5, 10, 3, 8, 1].includes(relMajor);
+  return (flatKey ? FLATS : relMajor === 0 ? NOTE_NAMES : SHARPS)[mod12(pc)];
+}
 export const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
 export const noteName = (midi) => NOTE_NAMES[mod12(midi)] + (Math.floor(midi / 12) - 1);
 export const pcName = (pc) => NOTE_NAMES[mod12(pc)];
@@ -101,10 +111,10 @@ export function parseRoman(str) {
   return { semi, quality, roman: romanFor(semi, quality) };
 }
 
-export function chordSymbol(roman, keyPc) {
+export function chordSymbol(roman, keyPc, mode = 'major') {
   const c = parseRoman(roman);
   if (!c) return '?';
-  return pcName(keyPc + c.semi) + QUALITIES[c.quality].sym;
+  return spell(keyPc + c.semi, keyPc, mode) + QUALITIES[c.quality].sym;
 }
 
 // Close-voiced chord placed in a window starting at `low` (MIDI).
@@ -142,4 +152,17 @@ export const BORROWED = ['bIII', 'iv', 'bVI', 'bVII', 'II', 'III', 'V', 'V7', 'b
 
 export function inScale(semi, mode) {
   return (SCALES[mode] || MAJOR).includes(mod12(semi));
+}
+
+// What job a bass note is doing under a chord: R, 3, 5, b7… or → (approach into the next chord).
+const ROLE_NAMES = ['R', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
+export function bassRole(bassSemi, roman, nextRoman) {
+  const c = parseRoman(roman);
+  if (!c) return '?';
+  const iv = mod12(bassSemi - c.semi);
+  const tones = QUALITIES[c.quality].ints.map(mod12);
+  if (tones.includes(iv) || iv === 0) return ROLE_NAMES[iv];
+  const n = parseRoman(nextRoman);
+  if (n && n.semi !== c.semi && (mod12(bassSemi + 1) === n.semi || mod12(bassSemi - 1) === n.semi)) return '→';
+  return ROLE_NAMES[iv];
 }

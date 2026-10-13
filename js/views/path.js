@@ -64,5 +64,6 @@ export function render(el) {
         h('p', {}, firstVisit
           ? 'Every song is made of the same few layers: rhythm, bass, harmony, melody, texture and arrangement. Each concept here is one way of hearing those layers. Earn a concept by passing its trial; earn the right concepts and a song opens up for you to take apart.'
           : `${earned} of ${CONCEPTS.length} concepts earned.`)),
+      h('a', { class: 'callout', href: '#/bass' }, h('b', {}, 'Start with the Bass Lab'), h('span', {}, 'Seven short lessons on how the bass relates to the kick, the chords and the space. Flip between bass parts while the loop plays.')),
       h('div', { class: 'concepts' }, CONCEPTS.map((c) => card(c, rerender)))));
 }

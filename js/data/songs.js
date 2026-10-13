@@ -148,7 +148,7 @@ export const SONGS = [
     title: 'Cannock Chase',
     artist: 'Labi Siffre',
     lens: 'Early-70s acoustic soul-folk: warm, voice-led and every instrument breathing.',
-    requires: ['intervals', 'sevenths'],
+    requires: ['chordtones', 'sevenths'],
     key: null, bpm: null, draft: true,
     why: 'Records like this are arranged around the voice. Parts enter and leave to support the story rather than to build a drop. The harmony is often richer than it first sounds: listen for 7ths, suspended chords and bass notes that walk between chords.',
     missions: [

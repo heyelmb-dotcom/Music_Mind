@@ -53,6 +53,26 @@ export function playProgression(chords, key, secPerChord = 1.0, voice = 'epiano'
   });
 }
 
+// Which chord tone is the bass playing?
+export const BASS_TONES = [
+  { id: 'R', label: 'Root' },
+  { id: '3', label: '3rd' },
+  { id: '5', label: '5th' },
+  { id: '7', label: '♭7th' },
+];
+function playBassTone(root, minor, tone) {
+  begin().then(({ t, out }) => {
+    const ints = minor ? [0, 3, 7] : [0, 4, 7];
+    const off = { R: 0, 3: ints[1], 5: 7, 7: 10 }[tone];
+    const bassNote = root - 24 + off;
+    for (let k = 0; k < 2; k++) {
+      const at = t + k * 1.7;
+      ints.forEach((i) => trigger('epiano', at, root + i, 1.5, 0.45, out));
+      trigger('sawbass', at, bassNote, 1.5, 0.9, out);
+    }
+  });
+}
+
 // ---------- Production ears ----------
 export const BANDS = [
   { id: '60', f: 60, label: '60 Hz — sub' },
@@ -171,6 +191,25 @@ export const DRILLS = {
         answer: id,
         play: () => playProgression(PROGRESSIONS[id].chords, key),
         playOption: (o) => playProgression(PROGRESSIONS[o].chords, key),
+      };
+    },
+  },
+  basstone: {
+    title: 'Bass chord tones',
+    side: 'bass',
+    about: 'A chord with a bass note under it, played twice. Is the bass on the root, the 3rd, the 5th or the ♭7th? The root sounds settled. The 3rd sounds lighter, like the chord is leaning. The 5th sounds open and strong. The ♭7th sounds unresolved, like it wants to move.',
+    defaults: { set: ['R', '3', '5'] },
+    make({ set }) {
+      const pool = BASS_TONES.filter((b) => set.includes(b.id));
+      const ans = pick(pool).id;
+      const root = rand(55, 64);
+      const minor = Math.random() < 0.5;
+      return {
+        options: pool.map((b) => ({ id: b.id, label: b.label })),
+        answer: ans,
+        play: () => playBassTone(root, minor, ans),
+        playOption: (id) => playBassTone(root, minor, id),
+        reference: () => playBassTone(root, minor, 'R'),
       };
     },
   },

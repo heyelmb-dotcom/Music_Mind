@@ -35,6 +35,42 @@ export const CONCEPTS = [
     },
   },
   {
+    id: 'pocket',
+    title: 'The pocket: bass + kick',
+    side: 'bass',
+    idea: [
+      'The kick and the bass are the low end of the band, and they work as one instrument. When bass notes start where the kick hits, the low end punches as a unit and the groove feels "in the pocket".',
+      'You do not have to play every kick, and you can add notes between them. But start from the kick: it is the map of where your notes land. Bass Lab lesson 2 lets you hear locked vs. against side by side.',
+    ],
+    listen: 'In any of your songs, focus on the lowest two sounds. Do the bass notes start with the kick, or dance around it?',
+    trial: {
+      type: 'build',
+      task: 'In the Studio, write a kick pattern with at least 3 hits in bar 1 that isn\'t just straight quarter notes, and a bassline that starts a note on every one of those kicks.',
+      check(p) {
+        const kicks = drumsOf(p, KICKISH);
+        const bass = p.tracks.find((t) => t.id === 'bass');
+        const ks = [...Array(p.spb).keys()].filter((s) => hitAt(kicks, s));
+        if (ks.length < 3) return { ok: false, msg: 'Bar 1 needs at least 3 kick hits.' };
+        const q = p.spb / 4;
+        if (ks.every((s) => s % q === 0)) return { ok: false, msg: 'Give the kick at least one hit off the beat, so locking means something.' };
+        const miss = ks.filter((s) => bass.steps[s] === null || bass.steps[s] === undefined);
+        if (miss.length) return { ok: false, msg: `No bass note on the kick at step ${miss[0] + 1}.` };
+        return { ok: true };
+      },
+    },
+  },
+  {
+    id: 'chordtones',
+    title: 'Bass chord tones',
+    side: 'bass',
+    idea: [
+      'Under any chord, the bass has a few safe notes: the root, the 5th and the 3rd. The root states the chord. The 5th makes it strong and open. The 3rd turns it into an inversion, which feels lighter and in motion.',
+      'Hearing which one is under a chord is how you work out bass parts by ear, and how you hear why a line feels the way it does. Bass Lab lessons 3 and 6 put these side by side.',
+    ],
+    listen: 'Sing the chord, then sing what the bass is playing. Same note (root) or different?',
+    trial: { type: 'ear', drill: 'basstone', opts: { set: ['R', '3', '5'] }, need: 8, of: 10 },
+  },
+  {
     id: 'intervals',
     title: 'Intervals',
     side: 'musical',
