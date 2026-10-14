@@ -123,3 +123,20 @@ test('notes are spelled the way the key spells them', async () => {
   assert.equal(chordSymbol('V', 4), 'B');
   assert.equal(chordSymbol('iii', 4), 'G#m');
 });
+
+test('In Bloom workbench: power chords, roots, frets', async () => {
+  const { BAND_PARTS } = await import('../js/data/bandsongs.js');
+  const { lessonSketch } = await import('../js/data/bass.js');
+  const { bassFrets } = await import('../js/theory.js');
+  assert.equal(chordSymbol('bVI5', 10), 'Gb5');
+  assert.equal(chordSymbol('bII5', 10), 'B5');
+  assert.equal(chordSymbol('#IV5', 10), 'E5');
+  assert.equal(chordSymbol('VI5', 10), 'G5');
+  assert.deepEqual(bassFrets(10).filter((x) => 'EA'.includes(x.string)), [{ string: 'A', fret: 1 }, { string: 'E', fret: 6 }]);
+  for (const l of BAND_PARTS) for (const v of l.variants) {
+    const p = fromSketch(lessonSketch(l, v));
+    const bass = p.tracks.find((t) => t.id === 'bass');
+    assert.equal(bass.steps.length, p.bars * 16);
+    for (let b = 0; b < p.bars; b++) assert.equal((p.key + bass.steps[b * 16]) % 12, (p.key + parseRoman(p.chords[b]).semi) % 12, `${l.id}/${v.label} bar ${b + 1}`);
+  }
+});

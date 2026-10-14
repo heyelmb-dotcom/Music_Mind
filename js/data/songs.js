@@ -42,6 +42,40 @@ const emo = ['i', 'bVI', 'bIII', 'bVII'];
 
 export const SONGS = [
   {
+    id: 'inbloom',
+    title: 'In Bloom',
+    artist: 'Nirvana',
+    band: true,
+    lens: 'Grunge loud-quiet-loud: chromatic power-chord roots, and a verse the bass carries alone.',
+    requires: [],
+    key: 10, mode: 'major', bpm: 80, draft: true,
+    why: 'The whole song is a contrast machine. Heavy, distorted riff, then the guitar disappears and the verse rides on bass, drums and voice, then the chorus slams back as one wall. The roots move chromatically (Bb, F#, Eb, B, A), which only works because power chords have no 3rd to clash.',
+    missions: [
+      'Riff check: is the third root of the riff Eb or E? (Bass Lab → In Bloom → the riff, variants A and B.)',
+      'Chorus check: after Bb and G, does the chorus go to F–Ab or to C–Eb?',
+      'Verse: listen to the isolated bass. Between the roots, what does Krist play: passing notes, octaves, a melody? Write the first bar here.',
+      'Does the bass play 8ths in the chorus, or something busier? Is it locked with the kick?',
+      'Map the form: count the bars of the intro, a verse and a chorus, and fix the section lengths in the editor.',
+    ],
+    sections: [
+      sec('Intro (riff)', 8, 4, { vocal: false }, 'I5 bVI5 IV5 bII5 VII5'),
+      sec('Verse 1', 16, 2, { harmony: false }, 'I5 bVI5 IV5 bII5 VII5', 'Guitar out: bass, drums, vocal. Your line is the harmony.'),
+      sec('Chorus', 8, 5, { texture: true }, 'I5 VI5 V5 bVII5', 'Candidate A. Sheets also show I5 VI5 II5 IV5. Check by ear.'),
+      sec('Verse 2', 16, 2, { harmony: false }, 'I5 bVI5 IV5 bII5 VII5'),
+      sec('Chorus', 8, 5, { texture: true }, 'I5 VI5 V5 bVII5'),
+      sec('Solo', 8, 4, { vocal: false }),
+      sec('Final chorus', 16, 5, { texture: true }, 'I5 VI5 V5 bVII5'),
+    ],
+    sketch: {
+      name: 'In Bloom riff (draft)', bpm: 80, key: 10, mode: 'major', bars: 5, spb: 16, swing: 0, chords: ['I5', 'bVI5', 'IV5', 'bII5', 'VII5'],
+      tracks: {
+        kick: { p: 'x.......x.x.....' }, snare: { p: '....x.......x...' }, hat: { p: 'x.x.x.x.x.x.x.x.', voice: 'openhat', vol: 0.3 },
+        bass: { p: bassLine(['I5', 'bVI5', 'IV5', 'bII5', 'VII5'], 'R . R . R . R . R . R . R . R .'), voice: 'pluckbass', gate: 'normal' },
+        chords: { p: 'x.x.x.x.x.x.x.x.', voice: 'grit', gate: 'normal', vol: 0.45 },
+      },
+    },
+  },
+  {
     id: 'sugar',
     title: "Sugar, We're Goin Down",
     artist: 'Fall Out Boy',

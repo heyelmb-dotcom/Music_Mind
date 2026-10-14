@@ -1,10 +1,11 @@
 // Bass Lab: one loop, flip the bass approach while it plays, see each note's job.
 import { h, mount } from '../ui.js';
 import { BASS_LESSONS, lessonSketch } from '../data/bass.js';
+import { BAND_SONGS, BAND_PARTS } from '../data/bandsongs.js';
 import { fromSketch } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio } from '../audio.js';
-import { NOTE_NAMES, chordSymbol, bassRole, spell } from '../theory.js';
+import { chordSymbol, bassRole, spell, parseRoman, bassFrets, bothNames, mod12 } from '../theory.js';
 import { loadProject, player as studioPlayer } from './studio.js';
 
 const labPlayer = new Player();
@@ -58,12 +59,38 @@ export function renderList(el) {
       h('p', {}, 'How the bass relates to everything else: the kick, the chords and the space. Each lesson plays one loop and lets you swap only the bass while it runs.')),
     h('div', { class: 'lessons' }, BASS_LESSONS.map((l, i) => h('a', { class: 'lesson', href: `#/bass/${l.id}` },
       h('span', { class: 'lesson-n' }, i + 1),
-      h('span', {}, h('b', {}, l.title), h('small', {}, l.variants.map((v) => v.label).join(' · '))))))));
+      h('span', {}, h('b', {}, l.title), h('small', {}, l.variants.map((v) => v.label).join(' · ')))))),
+    h('h2', { class: 'section-title' }, 'Your band\'s songs'),
+    BAND_SONGS.map((song) => h('div', { class: 'bandsong' },
+      h('h3', {}, song.title, h('span', { class: 'muted' }, ' · ' + song.artist)),
+      h('p', {}, song.summary),
+      h('div', { class: 'lessons' }, song.parts.map((l) => h('a', { class: 'lesson', href: `#/bass/${l.id}` },
+        h('span', { class: 'lesson-n band-n' }, '♩'),
+        h('span', {}, h('b', {}, l.title.replace(song.title + ': ', '')), h('small', {}, l.variants.map((v) => v.label).join(' · ')))))))),
+  ));
+}
+
+// Where each chord's root sits on the neck, in the order the loop plays them.
+function rootsOnNeck(p) {
+  const seen = new Set();
+  const items = [];
+  for (const r of p.chords) {
+    const c = parseRoman(r);
+    if (!c || seen.has(r)) continue;
+    seen.add(r);
+    const pc = mod12(p.key + c.semi);
+    const pos = bassFrets(pc).filter((x) => x.string === 'E' || x.string === 'A').sort((a, b) => a.fret - b.fret);
+    items.push(h('span', { class: 'fret' }, h('b', {}, bothNames(pc)), h('small', {}, pos.map((x) => `${x.string} string, fret ${x.fret}`).join(' or '))));
+  }
+  return h('div', { class: 'frets' }, h('div', { class: 'lane-label' }, 'Roots on the neck (standard E A D G tuning)'), h('div', { class: 'fret-list' }, items));
 }
 
 export function renderLesson(el, id) {
-  const idx = BASS_LESSONS.findIndex((l) => l.id === id);
-  const lesson = BASS_LESSONS[idx];
+  const all = [...BASS_LESSONS, ...BAND_PARTS];
+  const lesson = all.find((l) => l.id === id);
+  const group = lesson?.song ? BAND_PARTS.filter((l) => l.song === lesson.song) : BASS_LESSONS;
+  const idx = group.indexOf(lesson);
+  const song = lesson?.song ? BAND_SONGS.find((x) => x.id === lesson.song) : null;
   if (!lesson) return mount(el, h('p', { class: 'page' }, 'Lesson not found.'));
   let vi = 0;
   const projects = lesson.variants.map((v) => fromSketch(lessonSketch(lesson, v)));
@@ -95,19 +122,22 @@ export function renderLesson(el, id) {
         h('span', { class: 'v-letter' }, String.fromCharCode(65 + i)), x.label))),
       h('p', { class: 'what' }, v.what),
       viz(current),
+      rootsOnNeck(current),
       h('div', { class: 'legend' }, LEGEND.map(([s, l, c]) => h('span', { class: 'lg ' + c }, h('b', {}, s), ' ', l))),
       h('div', { class: 'actions' },
         h('button', { class: 'btn', onclick: () => { stop(); loadProject(projects[vi], 'demo:bass-' + lesson.id); location.hash = '#/studio'; } }, 'Open this in Studio')));
   }
   drawVariant();
-  const prev = BASS_LESSONS[idx - 1], next = BASS_LESSONS[idx + 1];
+  const prev = group[idx - 1], next = group[idx + 1];
   mount(el, h('section', { class: 'page' },
     h('header', { class: 'hero' }, h('a', { class: 'back', href: '#/bass' }, '← Bass Lab'),
       h('h1', {}, lesson.title)),
+    song && h('div', { class: 'draftbox' }, h('b', {}, 'Check by ear: '), song.status,
+      h('div', { class: 'row wrap' }, song.sources.map(([label, url]) => h('a', { class: 'chip wide', href: url, target: '_blank', rel: 'noopener' }, label + ' ↗')))),
     h('p', { class: 'idea' }, lesson.idea),
-    h('div', { class: 'labbar' }, playBtn, h('span', { class: 'muted' }, `${NOTE_NAMES[lesson.loop.key]} ${lesson.loop.mode} · ${lesson.loop.bpm} BPM · switch while it plays`)),
+    h('div', { class: 'labbar' }, playBtn, h('span', { class: 'muted' }, `${spell(lesson.loop.key, lesson.loop.key, lesson.loop.mode)} ${lesson.loop.mode} · ${lesson.loop.bpm} BPM${song ? ' (approx.)' : ''} · switch while it plays`)),
     body,
-    h('div', { class: 'band' }, h('h3', {}, 'With your band'), h('p', {}, lesson.band)),
+    h('div', { class: 'band' }, h('h3', {}, song ? 'At practice' : 'With your band'), h('p', {}, lesson.band)),
     h('div', { class: 'actions' },
       prev && h('a', { class: 'btn ghost', href: `#/bass/${prev.id}` }, '← ' + prev.title),
       next && h('a', { class: 'btn', href: `#/bass/${next.id}` }, next.title + ' →'))));

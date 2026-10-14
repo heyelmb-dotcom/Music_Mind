@@ -24,7 +24,7 @@ export function renderList(el) {
         const miss = missingFor(s);
         return h('a', { class: 'card song' + (miss.length ? ' locked' : ''), href: `#/song/${s.id}` },
           h('div', { class: 'song-top' }, h('h3', {}, s.title), h('span', { class: 'lock' }, miss.length ? '🔒' : '')),
-          h('p', { class: 'artist' }, s.artist),
+          h('p', { class: 'artist' }, s.artist, s.band ? h('span', { class: 'tag', style: { marginLeft: '8px' } }, 'your band') : null),
           h('p', {}, s.lens),
           miss.length ? h('p', { class: 'needs' }, 'Needs: ', miss.map((c) => conceptById(c)?.title).join(' · ')) : null);
       })),
@@ -122,7 +122,8 @@ export function renderSong(el, id) {
         h('p', {}, m),
         h('textarea', { rows: 2, placeholder: 'What did you hear?', value: journal[i] || '', oninput: (e) => update((st) => { (st.journal[song.id] ||= {})[i] = e.target.value; }) })))) : null,
     h('div', { class: 'actions' },
-      song.sketch && h('button', { class: 'btn primary', onclick: () => { loadProject(fromSketch(song.sketch), 'sketch:' + song.id); location.hash = '#/studio'; } }, `Open sketch: ${song.sketch.name}`),
+      song.band && h('a', { class: 'btn primary', href: '#/bass/' + song.id + '-riff' }, 'Learn the bass part'),
+      song.sketch && h('button', { class: 'btn' + (song.band ? '' : ' primary'), onclick: () => { loadProject(fromSketch(song.sketch), 'sketch:' + song.id); location.hash = '#/studio'; } }, `Open sketch: ${song.sketch.name}`),
       h('a', { class: 'btn', href: `#/edit/${song.id}` }, 'Edit map'),
       h('button', { class: 'btn', onclick: () => download(`${song.title}.map.json`, JSON.stringify(song, null, 2), 'application/json') }, 'Export map')),
     song.sketch && h('p', { class: 'hint' }, 'The sketch is a style study in this song\'s world, not a transcription. Rebuild the real parts on top of it.')));

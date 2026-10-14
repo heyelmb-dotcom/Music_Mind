@@ -282,3 +282,13 @@ input[type=checkbox] { accent-color: var(--accent); }
 .lg { font-size: 12px; padding: 2px 8px; border-radius: 6px; color: #120d1c; }
 .band { background: var(--bg2); border-left: 3px solid var(--bass); border-radius: 0 10px 10px 0; padding: 4px 14px 8px; margin-top: 14px; }
 .band h3 { margin-top: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--bass); }
+.bandsong { background: var(--bg2); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.bandsong > p { color: var(--muted); font-size: 14px; }
+.band-n { background: var(--rhythm); }
+.draftbox { background: var(--bg2); border: 1px solid #5a4626; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 8px; }
+.draftbox b { color: var(--accent); }
+.frets { margin-top: 10px; }
+.fret-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.fret { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+.fret b { color: var(--bass); }
+.fret small { color: var(--muted); font-size: 11px; }

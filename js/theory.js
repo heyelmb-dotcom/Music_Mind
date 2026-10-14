@@ -36,6 +36,7 @@ const SEMI_TO_ROOT = [
 // lower: written with a lowercase numeral. rsuf: roman suffix. sym: chord-symbol suffix.
 export const QUALITIES = {
   maj: { ints: [0, 4, 7], lower: false, rsuf: '', sym: '', label: 'Major' },
+  pow: { ints: [0, 7], lower: false, rsuf: '5', sym: '5', label: 'Power chord (root + 5th)' },
   min: { ints: [0, 3, 7], lower: true, rsuf: '', sym: 'm', label: 'Minor' },
   dim: { ints: [0, 3, 6], lower: true, rsuf: '°', sym: 'dim', label: 'Diminished' },
   aug: { ints: [0, 4, 8], lower: false, rsuf: '+', sym: 'aug', label: 'Augmented' },
@@ -94,7 +95,7 @@ export function romanFor(semi, quality) {
 }
 
 const ROMAN_RE = /^([b#]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(.*)$/;
-const UPPER_SUF = { '': 'maj', '+': 'aug', maj7: 'maj7', '7': 'dom7', sus2: 'sus2', sus4: 'sus4', add9: 'add9' };
+const UPPER_SUF = { '': 'maj', '5': 'pow', '+': 'aug', maj7: 'maj7', '7': 'dom7', sus2: 'sus2', sus4: 'sus4', add9: 'add9' };
 const LOWER_SUF = { '': 'min', '°': 'dim', o: 'dim', '7': 'min7', 'ø7': 'hdim7', '°7': 'dim7', o7: 'dim7', maj7: 'minmaj7' };
 
 // "bVII" -> { semi: 10, quality: 'maj', roman: 'bVII' }
@@ -166,3 +167,13 @@ export function bassRole(bassSemi, roman, nextRoman) {
   if (n && n.semi !== c.semi && (mod12(bassSemi + 1) === n.semi || mod12(bassSemi - 1) === n.semi)) return '→';
   return ROLE_NAMES[iv];
 }
+
+// Where a pitch class sits on a 4-string bass (E A D G), frets 0-12, lowest first.
+const BASS_STRINGS = [['E', 4], ['A', 9], ['D', 2], ['G', 7]];
+export function bassFrets(pc) {
+  return BASS_STRINGS.map(([name, open]) => ({ string: name, fret: mod12(pc - open) }))
+    .sort((a, b) => a.fret - b.fret);
+}
+
+// Both names for a black-key note ("Gb / F#"), so app spelling matches any tab you read.
+export const bothNames = (pc) => [...new Set([FLATS[mod12(pc)], SHARPS[mod12(pc)]])].join(' / ');

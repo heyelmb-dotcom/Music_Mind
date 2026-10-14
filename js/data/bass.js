@@ -118,8 +118,11 @@ export const BASS_LESSONS = [
 
 export function lessonSketch(lesson, variant) {
   const loopTracks = lesson.loop.tracks || DRUMS;
+  const chords = variant.chords || lesson.loop.chords;
   return {
     ...lesson.loop,
+    chords,
+    bars: chords.length,
     name: `${lesson.title}: ${variant.label}`,
     tracks: { ...loopTracks, chords: KEYS, ...variant.tracks },
   };
