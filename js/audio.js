@@ -368,3 +368,6 @@ export function stopBus() {
   setTimeout(() => old.disconnect(), 200);
   bus = null;
 }
+
+// The analyser only if audio has already started (never creates the AudioContext).
+export const peekAnalyser = () => (ctx ? analyser : null);

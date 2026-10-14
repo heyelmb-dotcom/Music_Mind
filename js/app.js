@@ -8,6 +8,7 @@ import * as bass from './views/bass.js';
 import * as keyView from './views/key.js';
 import { exportAll, importAll, resetProgress } from './store.js';
 import { stopBus } from './audio.js';
+import { initDotField, revealDots } from './dotfield.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -21,6 +22,7 @@ const TABS = [
 ];
 
 let cleanup = null;
+let enterTimer = 0;
 
 function route() {
   if (cleanup) { cleanup(); cleanup = null; }
@@ -47,6 +49,13 @@ function route() {
     default: keyView.render(view, null, params);
   }
   if (name !== 'studio') window.scrollTo(0, 0);
+  // page entrance: content fades up, the dot frame spreads in from the edges
+  view.classList.remove('enter');
+  void view.offsetWidth;
+  view.classList.add('enter');
+  clearTimeout(enterTimer);
+  enterTimer = setTimeout(() => view.classList.remove('enter'), 500); // so in-page redraws don't replay it
+  revealDots();
 }
 
 function settings() {
@@ -67,6 +76,7 @@ function settings() {
 }
 
 window.addEventListener('hashchange', route);
+initDotField();
 route();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

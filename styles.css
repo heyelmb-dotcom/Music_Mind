@@ -426,3 +426,9 @@ input[type=checkbox] { accent-color: var(--red); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Dot-matrix frame (js/dotfield.js) and page entrance */
+.dotfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+#view { position: relative; z-index: 1; }
+#view.enter > * { animation: enter 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes enter { from { opacity: 0.001; transform: translateY(8px); } to { opacity: 1; transform: none; } }
