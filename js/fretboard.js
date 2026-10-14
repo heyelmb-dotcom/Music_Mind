@@ -31,9 +31,14 @@ export function fretboard(opts) {
         onclick: () => { playMidi(openMidi + f); onTap && onTap({ string: name, fret: f, pc, semi, inKey }); },
       }, show || mark ? h('span', { class: 'fb-dot' + (semi === 0 && show ? ' tonic' : '') + (inKey ? '' : ' outside') }, mark && !show ? '' : label) : null));
     }
-    return h('div', { class: 'fb-row' }, h('span', { class: 'fb-name' }, name), cells);
+    return h('div', { class: `fb-row str-${name}` }, h('span', { class: 'fb-name' }, name), cells);
   });
+  // Pearl dot inlays, set into the wood behind the strings, like a real neck.
+  const inlays = [h('span', {}), h('span', {})];
+  for (let f = 1; f <= FRETS; f++) inlays.push(h('span', { class: 'fb-inlay' + (MARKERS[f] === '••' ? ' double' : MARKERS[f] ? ' single' : '') }));
   const nums = [h('span', { class: 'fb-name' }, '')];
   for (let f = 0; f <= FRETS; f++) nums.push(h('span', { class: 'fb-num' }, f === 0 ? '0' : MARKERS[f] ? `${f}` : ''));
-  return h('div', { class: 'fb-scroll' }, h('div', { class: 'fb' }, rows, h('div', { class: 'fb-row nums' }, nums)));
+  return h('div', { class: 'fb-scroll' }, h('div', { class: 'fb' },
+    h('div', { class: 'fb-board' }, h('div', { class: 'fb-row fb-inlays' }, inlays), rows),
+    h('div', { class: 'fb-row nums' }, nums)));
 }

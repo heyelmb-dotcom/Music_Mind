@@ -33,6 +33,7 @@ function masteryGrid() {
 function overview(el) {
   const n = Object.keys(load().keys).length;
   mount(el, h('section', { class: 'page' },
+    h('div', { class: 'masthead' }, h('div', { class: 'mm-title' }, 'Music Mind'), h('div', { class: 'mm-sub' }, 'hear the key, know the neck')),
     h('header', { class: 'hero' }, h('h1', {}, 'Hear the key. Know it on the neck.'),
       h('p', {}, 'Every song has a home note. Find it by ear, and the whole song becomes one pattern of numbers on the fretboard: 1 is home, 5 is strong, 4 and 5 are the big moves, 3 decides major or minor. Notes outside the pattern are the spice, and now you can see them.')),
     tabs(''),
