@@ -1,12 +1,12 @@
 // The Studio: 8-track step sequencer sandbox.
 import { h, mount, ask, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
-import { bassRole, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
+import { bassRole, degreeName, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
 import { newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio, trigger, getAnalyser, getCtx } from '../audio.js';
 import { projectToMidi } from '../midi.js';
 import { PROGRESSIONS } from '../drills.js';
-import { load, update } from '../store.js';
+import { load, update, labelMode, setLabelMode } from '../store.js';
 import { DEMOS } from '../data/demos.js';
 import { allSongs, isUnlocked } from '../library.js';
 
@@ -73,6 +73,23 @@ async function previewChord(r) {
 }
 
 const keyedName = (midi) => spell(midi, project.key, project.mode) + (Math.floor(midi / 12) - 1);
+
+// What a melodic step shows: its degree in the key (Key labels), its job under the chord (bass, Chord labels), or its name.
+function stepLabel(tr, s, v) {
+  const p = project;
+  if (labelMode() === 'key') return degreeName(v);
+  if (tr.kind === 'bass') {
+    const bar = Math.floor(s / p.spb);
+    return bassRole(v, p.chords[bar], p.chords[(bar + 1) % p.bars]);
+  }
+  return spell(p.key + v, p.key, p.mode);
+}
+
+export function labelToggle(onchange) {
+  const cur = labelMode();
+  return h('div', { class: 'seg small', title: 'How notes are labelled' }, [['chord', 'Chord: R 3 5'], ['key', 'Key: 1–7']].map(([id, label]) =>
+    h('button', { class: 'seg-btn' + (cur === id ? ' on' : ''), onclick: () => { setLabelMode(id); onchange(); } }, label)));
+}
 
 const melodicMidi = (tr, row) => BASE_MIDI[tr.kind] + project.key + row + tr.octave * 12;
 
@@ -163,7 +180,7 @@ function trackRow(tr) {
         selected = tr.id;
         commit();
       },
-    }, isMelodic(tr) && on ? h('i', {}, tr.kind === 'bass' ? bassRole(v, p.chords[Math.floor(s / p.spb)], p.chords[(Math.floor(s / p.spb) + 1) % p.bars]) : spell(p.key + v, p.key, p.mode)) : null));
+    }, isMelodic(tr) && on ? h('i', {}, stepLabel(tr, s, v)) : null));
   }
   return h('div', { class: `track layer-${tr.layer}` + (tr.id === selected ? ' sel' : '') + (tr.mute ? ' muted' : '') },
     h('div', { class: 'track-head' },
@@ -340,6 +357,7 @@ export function render(el) {
       transport(),
       h('div', { class: 'proj-name' }, project.name, project.origin ? h('span', { class: 'tag' }, project.origin.startsWith('demo') ? 'demo' : 'sketch') : null,
         h('span', { class: 'muted' }, ` · ${project.bars} bar${project.bars > 1 ? 's' : ''} · ${project.spb === 12 ? '12/8 grid' : '16ths'}${project.swing ? ` · swing ${Math.round(project.swing * 100)}%` : ''}`)),
+      labelToggle(() => render()),
       chordLane(),
       pager(),
       h('div', { class: 'tracks' }, project.tracks.map(trackRow)),

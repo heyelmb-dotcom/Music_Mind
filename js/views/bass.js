@@ -5,8 +5,9 @@ import { BAND_SONGS, BAND_PARTS } from '../data/bandsongs.js';
 import { fromSketch } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio } from '../audio.js';
-import { chordSymbol, bassRole, spell, parseRoman, bassFrets, bothNames, mod12 } from '../theory.js';
-import { loadProject, player as studioPlayer } from './studio.js';
+import { chordSymbol, bassRole, spell, parseRoman, bassFrets, bothNames, mod12, degreeName, SCALES } from '../theory.js';
+import { labelMode } from '../store.js';
+import { loadProject, player as studioPlayer, labelToggle } from './studio.js';
 
 const labPlayer = new Player();
 let current = null;
@@ -39,8 +40,10 @@ function viz(p) {
       const v = bass.steps[s];
       if (v === null || v === undefined) bassRow.push(h('div', { class: 'bv-cell' + beat, 'data-s': s }));
       else {
-        const role = bassRole(v, chord, next);
-        bassRow.push(h('div', { class: `bv-cell note ${roleClass(role)}` + beat, 'data-s': s, title: spell(p.key + v, p.key, p.mode) },
+        const keyMode = labelMode() === 'key';
+        const role = keyMode ? degreeName(v) : bassRole(v, chord, next);
+        const cls = keyMode ? (mod12(v) === 0 ? 'r-root' : (SCALES[p.mode] || SCALES.major).includes(mod12(v)) ? 'r-fifth' : 'r-approach') : roleClass(role);
+        bassRow.push(h('div', { class: `bv-cell note ${cls}` + beat, 'data-s': s, title: spell(p.key + v, p.key, p.mode) },
           h('b', {}, role), h('small', {}, spell(p.key + v, p.key, p.mode))));
       }
     }
@@ -121,9 +124,12 @@ export function renderLesson(el, id) {
       h('div', { class: 'variants' }, lesson.variants.map((x, i) => h('button', { class: 'variant' + (i === vi ? ' on' : ''), onclick: () => { vi = i; drawVariant(); } },
         h('span', { class: 'v-letter' }, String.fromCharCode(65 + i)), x.label))),
       h('p', { class: 'what' }, v.what),
+      labelToggle(drawVariant),
       viz(current),
+      labelMode() === 'key'
+        ? h('div', { class: 'legend' }, [['1', 'home', 'r-root'], ['2–7', 'in the key', 'r-fifth'], ['b2 #4…', 'outside the key', 'r-approach']].map(([s, l, c]) => h('span', { class: 'lg ' + c }, h('b', {}, s), ' ', l)))
+        : h('div', { class: 'legend' }, LEGEND.map(([s, l, c]) => h('span', { class: 'lg ' + c }, h('b', {}, s), ' ', l))),
       rootsOnNeck(current),
-      h('div', { class: 'legend' }, LEGEND.map(([s, l, c]) => h('span', { class: 'lg ' + c }, h('b', {}, s), ' ', l))),
       h('div', { class: 'actions' },
         h('button', { class: 'btn', onclick: () => { stop(); loadProject(projects[vi], 'demo:bass-' + lesson.id); location.hash = '#/studio'; } }, 'Open this in Studio')));
   }

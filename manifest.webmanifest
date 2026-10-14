@@ -2,7 +2,7 @@
   "name": "Music Mind",
   "short_name": "Music Mind",
   "description": "Learn music production by ear: concepts, song anatomy, ear training and an 8-track sketchpad.",
-  "start_url": "./#/path",
+  "start_url": "./#/key",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

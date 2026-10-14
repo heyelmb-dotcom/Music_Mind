@@ -177,3 +177,8 @@ export function bassFrets(pc) {
 
 // Both names for a black-key note ("Gb / F#"), so app spelling matches any tab you read.
 export const bothNames = (pc) => [...new Set([FLATS[mod12(pc)], SHARPS[mod12(pc)]])].join(' / ');
+
+// Scale degree of a note relative to the key's tonic, measured against the major scale
+// (same convention as the roman numerals): 1 2 3 4 5 6 7, with b/# for anything else.
+export const DEGREE_NAMES = ['1', 'b2', '2', 'b3', '3', '4', '#4', '5', 'b6', '6', 'b7', '7'];
+export const degreeName = (semiFromTonic) => DEGREE_NAMES[mod12(semiFromTonic)];

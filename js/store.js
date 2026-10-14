@@ -3,6 +3,8 @@ const KEY = 'musicmind.v1';
 
 const defaults = () => ({
   concepts: {}, // id -> { passed: true, at: ISO date }
+  keys: {}, // '10-major' (pitch class-mode) -> ISO date the neck quiz was passed
+  labels: 'chord', // how notes are labelled: 'chord' (R 3 5) or 'key' (1-7)
   journal: {}, // songId -> { missionIndex: text }
   songEdits: {}, // songId -> full song map overriding the built-in draft
   customSongs: [], // songs you mapped from scratch
@@ -55,3 +57,11 @@ export const isPassed = (id) => !!load().concepts[id]?.passed;
 export function markPassed(id) {
   update((s) => { s.concepts[id] = { passed: true, at: new Date().toISOString() }; });
 }
+
+export const keyId = (pc, mode) => `${pc}-${mode}`;
+export const isKeyMastered = (pc, mode) => !!load().keys[keyId(pc, mode)];
+export function markKey(pc, mode) {
+  update((s) => { s.keys[keyId(pc, mode)] = new Date().toISOString(); });
+}
+export const labelMode = () => load().labels || 'chord';
+export function setLabelMode(m) { update((s) => { s.labels = m; }); }
