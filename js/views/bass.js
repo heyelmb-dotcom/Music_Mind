@@ -1,13 +1,14 @@
 // Bass Lab: one loop, flip the bass approach while it plays, see each note's job.
-import { h, mount } from '../ui.js';
+import { h, mount, sheet, ask, toast, select } from '../ui.js';
 import { BASS_LESSONS, lessonSketch } from '../data/bass.js';
 import { BAND_SONGS, BAND_PARTS } from '../data/bandsongs.js';
-import { fromSketch, chordAt, nextChord, chordSegments, bassMidi } from '../project.js';
+import { fromSketch, chordAt, nextChord, chordSegments, bassMidi, tuningOf, newProject, TUNINGS, lowestOf } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio } from '../audio.js';
-import { chordSymbol, bassRole, spell, parseRoman, bassFrets, bothNames, mod12, degreeName, SCALES } from '../theory.js';
-import { labelMode, listProjects, getProjectById, touchProject, openProject, setting } from '../store.js';
-import { loadProject, player as studioPlayer, labelToggle, chordLabel } from './studio.js';
+import { chordSymbol, bassRole, spell, parseRoman, bassFrets, bothNames, mod12, degreeName, SCALES, NOTE_NAMES } from '../theory.js';
+import { labelMode, listProjects, getProjectById, touchProject, openProject, setting, addProject, listBandSongs, getBandSong, saveBandSong, deleteBandSong, newBandSong } from '../store.js';
+import { loadProject, player as studioPlayer, labelToggle, chordLabel, tapTempo } from './studio.js';
+import { starterSketch } from '../data/banddrafts.js';
 import { fretboard } from '../fretboard.js';
 import { fingering, cycleFingering } from '../fingering.js';
 
@@ -68,7 +69,16 @@ function viz(p) {
   }));
 }
 
-const partTitle = (id) => BAND_PARTS.find((x) => x.id === id)?.title || id;
+// Every band-song part a project can link to: the built-in workbench parts and your songs' parts.
+export function allParts() {
+  return [
+    ...BAND_PARTS.map((x) => ({ id: x.id, title: x.title })),
+    ...listBandSongs().flatMap((song) => song.parts.map((pt) => ({ id: `${song.id}/${pt.id}`, title: `${song.title}: ${pt.name}` }))),
+  ];
+}
+const partTitle = (id) => allParts().find((x) => x.id === id)?.title || id;
+const linkedTo = (partId) => listProjects().filter((p) => (p.links || []).includes(partId));
+const linkedCount = (song) => song.parts.filter((pt) => linkedTo(`${song.id}/${pt.id}`).length).length;
 
 const LEGEND = [['R', 'root', 'r-root'], ['3', '3rd', 'r-third'], ['5', '5th', 'r-fifth'], ['7', '7th', 'r-seventh'], ['→', 'approach', 'r-approach']];
 
@@ -79,34 +89,39 @@ export function renderList(el) {
     h('div', { class: 'lessons' }, BASS_LESSONS.map((l, i) => h('a', { class: 'lesson', href: `#/bass/${l.id}` },
       h('span', { class: 'lesson-n' }, i + 1),
       h('span', {}, h('b', {}, l.title), h('small', {}, l.variants.map((v) => v.label).join(' · ')))))),
+    h('h2', { class: 'section-title' }, 'Your band\'s songs'),
+    h('div', { class: 'lessons' },
+      BAND_SONGS.map((song) => h('a', { class: 'lesson', href: `#/bass/${song.parts[0].id}` },
+        h('span', { class: 'lesson-n band-n' }, '♩'),
+        h('span', {}, h('b', {}, song.title), h('small', {}, `${song.artist} · workbench: ${song.parts.length} parts with candidates to check`)))),
+      listBandSongs().map((song) => h('a', { class: 'lesson', href: `#/bass/s/${song.id}` },
+        h('span', { class: 'lesson-n band-n' }, '♩'),
+        h('span', {}, h('b', {}, song.title), h('small', {}, [song.artist, TUNINGS[song.tuning]?.label.replace(/ \(.*\)/, ''), `${song.parts.length} parts`, linkedCount(song) ? `${linkedCount(song)} linked` : song.draft ? 'draft' : ''].filter(Boolean).join(' · ')))))),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => { const song = newBandSong(); location.hash = `#/bass/s/${song.id}?edit=1`; } }, '+ Add a band song')),
     h('h2', { class: 'section-title' }, 'Your projects'),
     h('p', { class: 'hint' }, 'Any Studio project, read like a lesson: chords over your bassline, the neck, and the frets to play. Edits in the Studio show up here.'),
     h('div', { class: 'lessons' }, listProjects().map((p) => h('a', { class: 'lesson', href: `#/bass/p/${p.id}` },
       h('span', { class: 'lesson-n proj-n' }, '▦'),
       h('span', {}, h('b', {}, p.name), h('small', {}, `${spell(p.key, p.key, p.mode)} ${p.mode} · ${p.bars} bar${p.bars > 1 ? 's' : ''}${(p.links || []).length ? ' · linked to ' + p.links.map(partTitle).join(', ') : ''}`))))),
-    h('h2', { class: 'section-title' }, 'Your band\'s songs'),
-    BAND_SONGS.map((song) => h('div', { class: 'bandsong' },
-      h('h3', {}, song.title, h('span', { class: 'muted' }, ' · ' + song.artist)),
-      h('p', {}, song.summary),
-      h('div', { class: 'lessons' }, song.parts.map((l) => h('a', { class: 'lesson', href: `#/bass/${l.id}` },
-        h('span', { class: 'lesson-n band-n' }, '♩'),
-        h('span', {}, h('b', {}, l.title.replace(song.title + ': ', '')), h('small', {}, l.variants.map((v) => v.label).join(' · ')))))))),
   ));
 }
 
-// Where each chord's root sits on the neck, in the order the loop plays them.
+// Where each chord's root sits on the neck (in the project's tuning), in the order the loop plays them.
 function rootsOnNeck(p) {
   const seen = new Set();
   const items = [];
-  for (const r of p.chords) {
-    const c = parseRoman(r);
-    if (!c || seen.has(r)) continue;
-    seen.add(r);
-    const pc = mod12(p.key + c.semi);
-    const pos = bassFrets(pc).filter((x) => x.string === 'E' || x.string === 'A').sort((a, b) => a.fret - b.fret);
-    items.push(h('span', { class: 'fret' }, h('b', {}, bothNames(pc)), h('small', {}, pos.map((x) => `${x.string} string, fret ${x.fret}`).join(' or '))));
+  const strings = tuningOf(p).strings;
+  for (const e of p.chords) {
+    const c = parseRoman(e.r);
+    const semi = e.b ?? c?.semi;
+    if (semi === undefined || seen.has(semi)) continue;
+    seen.add(semi);
+    const pc = mod12(p.key + semi);
+    // lowest two places on the two lowest strings
+    const pos = strings.slice(0, 2).map(([name, open]) => ({ name, fret: mod12(pc - open) })).sort((a, b) => a.fret - b.fret);
+    items.push(h('span', { class: 'fret' }, h('b', {}, bothNames(pc)), h('small', {}, pos.map((x) => `${x.name} string, fret ${x.fret}`).join(' or '))));
   }
-  return h('div', { class: 'frets' }, h('div', { class: 'lane-label' }, 'Roots on the neck (standard E A D G tuning)'), h('div', { class: 'fret-list' }, items));
+  return h('div', { class: 'frets' }, h('div', { class: 'lane-label' }, `Roots on the neck (${tuningOf(p).label})`), h('div', { class: 'fret-list' }, items));
 }
 
 export function renderLesson(el, id) {
@@ -211,7 +226,7 @@ export function renderProject(el, id) {
     // neck: every position the line uses, labelled by its number in the key (or its job under the chord)
     const marks = {}, labels = {};
     for (const [s, pos] of fing) {
-      const k = `${pos.string}:${pos.fret}`;
+      const k = `${pos.idx}:${pos.fret}`;
       marks[k] = 'used';
       labels[k] = labelMode() === 'key' ? degreeName(bass.steps[s]) : noteRole(p, s, bass.steps[s]).text;
     }
@@ -235,19 +250,24 @@ export function renderProject(el, id) {
       viz(p),
       h('h2', { class: 'section-title' }, 'On the neck'),
       h('p', { class: 'hint' }, 'Every spot this line uses. The one playing lights up. Fingering keeps your hand close to where it already is; tap a note in the list below to move it.'),
-      fretboard({ key: p.key, mode: p.mode, frets, hideKey: true, marks, markLabels: labels }),
+      fretboard({ key: p.key, mode: p.mode, frets, strings: tuningOf(p).strings, hideKey: true, marks, markLabels: labels }),
       h('h2', { class: 'section-title' }, 'String & fret'),
       h('div', { class: 'tab' }, tab),
       h('h2', { class: 'section-title' }, 'Link to a band song'),
       h('p', { class: 'hint' }, 'Linked projects show up first on that part\'s page.'),
-      h('div', { class: 'row wrap' }, BAND_PARTS.map((part) => h('button', {
-        class: 'chip wide' + (links.includes(part.id) ? ' on' : ''),
-        onclick: () => {
-          p.links = links.includes(part.id) ? links.filter((x) => x !== part.id) : [...links, part.id];
+      h('div', { class: 'row wrap' },
+        links.map((id) => h('button', { class: 'chip wide on', title: 'Tap to unlink', onclick: () => {
+          p.links = links.filter((x) => x !== id);
           touchProject(p);
           draw();
-        },
-      }, part.title))));
+        } }, partTitle(id) + '  ✕')),
+        h('select', { onchange: (e) => {
+          if (!e.target.value) return;
+          p.links = [...new Set([...links, e.target.value])];
+          touchProject(p);
+          draw();
+        } }, h('option', { value: '' }, links.length ? '+ Link another part…' : '+ Link to a part…'),
+          allParts().filter((x) => !links.includes(x.id)).map((x) => h('option', { value: x.id }, x.title)))));
   }
 
   labPlayer.onStep = (s) => {
@@ -255,7 +275,7 @@ export function renderProject(el, id) {
     if (s < 0) return;
     body.querySelectorAll(`[data-s="${s}"]`).forEach((e) => e.classList.add('now'));
     const pos = fingering(live(), setting('frets')).get(s);
-    if (pos) posNow = `${pos.string}:${pos.fret}`;
+    if (pos) posNow = `${pos.idx}:${pos.fret}`;
     if (posNow) body.querySelector(`[data-pos="${posNow}"]`)?.classList.add('now');
   };
 
@@ -268,4 +288,108 @@ export function renderProject(el, id) {
     body));
   draw();
   sync();
+}
+
+// ---------- A band song: its parts, your versions of each, and where it came from ----------
+export function renderBandSong(el, id, params) {
+  const song = getBandSong(id);
+  if (!song) return mount(el, h('section', { class: 'page' }, h('a', { class: 'back', href: '#/bass' }, '← Bass Lab'), h('p', {}, 'That song is gone.')));
+  const t = TUNINGS[song.tuning] || TUNINGS.std;
+  const draw = () => renderBandSong(el, id, new URLSearchParams());
+
+  // a new Studio project for this part, in the song's tuning/key, linked straight away
+  const startPart = (pt) => {
+    const p = fromSketch(starterSketch(song, pt));
+    const bass = p.tracks.find((x) => x.id === 'bass');
+    const home = lowestOf(p, 0);
+    for (let i = 0; i < p.bars * p.spb; i += 2) bass.steps[i] = home;
+    bass.voice = 'pluckbass';
+    bass.gate = 'normal';
+    p.links = [`${song.id}/${pt.id}`];
+    loadProject(p);
+    location.hash = '#/studio';
+  };
+
+  const linkSheet = (pt) => {
+    const partId = `${song.id}/${pt.id}`;
+    const close = sheet(`Link to ${pt.name}`, h('div', { class: 'menu' },
+      h('p', { class: 'hint' }, 'Pick the Studio project that holds your version of this part.'),
+      h('div', { class: 'list projects' }, listProjects().map((p) => h('div', { class: 'list-item' },
+        h('button', { class: 'link', onclick: () => {
+          p.links = [...new Set([...(p.links || []), partId])];
+          touchProject(p);
+          close();
+          draw();
+        } }, h('b', {}, p.name), h('small', {}, ` ${spell(p.key, p.key, p.mode)} ${p.mode} · ${p.bars} bars`)))))));
+  };
+
+  const partCard = (pt) => {
+    const mine = linkedTo(`${song.id}/${pt.id}`);
+    return h('div', { class: 'part' },
+      h('div', { class: 'part-head' }, h('b', {}, pt.name), pt.note && h('span', { class: 'muted' }, ' · ' + pt.note)),
+      mine.length ? h('div', { class: 'lessons' }, mine.map((p) => h('a', { class: 'lesson mine-item', href: `#/bass/p/${p.id}` },
+        h('span', { class: 'lesson-n proj-n' }, '▦'),
+        h('span', {}, h('b', {}, p.name), h('small', {}, 'read it, play along, see the frets'))))) : h('p', { class: 'hint' }, 'Nothing here yet.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small' + (mine.length ? '' : ' primary'), onclick: () => startPart(pt) }, mine.length ? 'Start another version' : 'Start in Studio'),
+        h('button', { class: 'btn small ghost', onclick: () => linkSheet(pt) }, 'Link a project')));
+  };
+
+  mount(el, h('section', { class: 'page' },
+    h('header', { class: 'hero' }, h('a', { class: 'back', href: '#/bass' }, '← Bass Lab'),
+      h('h1', {}, song.title), h('p', { class: 'artist' }, song.artist),
+      h('p', { class: 'meta' },
+        h('span', { class: 'tag' }, t.label),
+        h('span', { class: 'tag' }, `home ${spell(song.key, song.key, song.mode)} ${song.mode}`),
+        h('span', { class: 'tag' }, song.bpm ? `${song.bpm} BPM` : 'BPM: tap it'),
+        song.draft && h('span', { class: 'tag warn' }, 'draft: check by ear'))),
+    (song.notes || song.sources?.length) && h('div', { class: 'draftbox' },
+      song.notes && h('p', {}, song.notes),
+      song.sources?.length && h('div', { class: 'row wrap' }, song.sources.map(([label, url]) => h('a', { class: 'chip wide', href: url, target: '_blank', rel: 'noopener' }, label + ' ↗')))),
+    h('p', { class: 'hint' }, '"Start in Studio" makes a new project in this tuning and key: a basic beat with the bass on the home note, ready for you to replace with the real part. It shows up here once it exists.'),
+    h('div', { class: 'parts' }, song.parts.map(partCard)),
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn', onclick: () => editSong(song, draw) }, 'Edit song'),
+      h('button', { class: 'btn ghost', onclick: async () => {
+        if (!(await ask(`Delete "${song.title}"? Your Studio projects stay.`, 'Delete'))) return;
+        deleteBandSong(song.id);
+        location.hash = '#/bass';
+      } }, 'Delete song'))));
+  if (params?.get('edit')) editSong(song, draw);
+}
+
+function editSong(song, done) {
+  const s = JSON.parse(JSON.stringify(song));
+  const body = h('div', { class: 'menu' });
+  const draw = () => mount(body,
+    h('label', { class: 'field wide' }, h('span', {}, 'Title'), h('input', { value: s.title, oninput: (e) => { s.title = e.target.value; } })),
+    h('label', { class: 'field wide' }, h('span', {}, 'Artist (if it\'s a cover)'), h('input', { value: s.artist, oninput: (e) => { s.artist = e.target.value; } })),
+    h('div', { class: 'row' },
+      h('label', { class: 'field grow' }, h('span', {}, 'Tuning'), select(s.tuning, Object.entries(TUNINGS).map(([k, x]) => [k, x.label]), (v) => { s.tuning = v; }))),
+    h('div', { class: 'row' },
+      h('label', { class: 'field' }, h('span', {}, 'Home'), select(s.key, NOTE_NAMES.map((n, i) => [i, n]), (v) => { s.key = +v; })),
+      h('label', { class: 'field' }, h('span', {}, 'Mode'), select(s.mode, ['minor', 'major', 'dorian', 'mixolydian', 'phrygian'], (v) => { s.mode = v; })),
+      h('label', { class: 'field' }, h('span', {}, 'BPM'), h('input', { class: 'num', type: 'number', min: 40, max: 260, value: s.bpm ?? '', oninput: (e) => { s.bpm = +e.target.value || null; } })),
+      tapTempo((bpm) => { s.bpm = bpm; draw(); })),
+    h('label', { class: 'field wide' }, h('span', {}, 'Notes'), h('textarea', { rows: 3, value: s.notes || '', oninput: (e) => { s.notes = e.target.value; } })),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.draft, onchange: (e) => { s.draft = e.target.checked; } }), ' Still a draft (not checked by ear)'),
+    h('h4', {}, 'Parts'),
+    s.parts.map((pt, i) => h('div', { class: 'row' },
+      h('input', { class: 'grow', value: pt.name, oninput: (e) => { pt.name = e.target.value; } }),
+      h('button', { class: 'btn ghost small', disabled: i === 0, onclick: () => { [s.parts[i - 1], s.parts[i]] = [s.parts[i], s.parts[i - 1]]; draw(); } }, '↑'),
+      h('button', { class: 'btn ghost small', onclick: () => { s.parts.splice(i, 1); draw(); } }, '✕'))),
+    h('button', { class: 'btn small', onclick: () => {
+      const n = Math.max(0, ...s.parts.map((x) => +x.id.slice(1) || 0)) + 1;
+      s.parts.push({ id: 'p' + n, name: 'Part ' + n, note: '' });
+      draw();
+    } }, '+ Part'),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => {
+      s.title = s.title.trim() || 'Untitled song';
+      saveBandSong(s);
+      close();
+      toast('Saved');
+      done();
+    } }, 'Save')));
+  draw();
+  const close = sheet('Edit song', body);
 }

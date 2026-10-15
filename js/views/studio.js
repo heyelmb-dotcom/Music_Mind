@@ -1,7 +1,7 @@
 // The Studio: 8-track step sequencer sandbox.
 import { h, mount, ask, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
 import { bassRole, degreeName, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordTones, parseRoman, parseChordInput, diatonicChords, BORROWED, inScale, mod12 } from '../theory.js';
-import { migrate as migrateImport, newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND, MAX_BARS, chordAt, nextChord, chordSegments, sortChords, bassMidi, bassBase, bassRange, fitBass, BASS_LOW } from '../project.js';
+import { migrate as migrateImport, newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND, MAX_BARS, chordAt, nextChord, chordSegments, sortChords, bassMidi, bassRange, fitBass, lowestOf, TUNINGS, tuningOf } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio, trigger, getAnalyser, getCtx } from '../audio.js';
 import { projectToMidi } from '../midi.js';
@@ -290,7 +290,7 @@ function trackPanel() {
       // the lowest place on the neck for each chord's root (or its slash note)
       for (const e of p.chords) {
         const pc = e.b ?? parseRoman(e.r).semi;
-        tr.steps[e.s] = BASS_LOW + mod12(p.key + pc - 4) - bassBase(p.key);
+        tr.steps[e.s] = lowestOf(p, pc);
       }
       commit();
       toast('Roots placed at every chord change');
@@ -351,7 +351,7 @@ function pianoRoll(tr) {
     h('div', { class: 'roll-tools' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: scaleLock, onchange: (e) => { scaleLock = e.target.checked; render(); } }), ' Scale lock'),
       h('span', { class: 'hint' }, isBass
-        ? `Low E to fret ${setting('frets')}, at the pitch you play it · bar ${page + 1} starts on ${cur.sym}`
+        ? `${tuningOf(p).label}, open strings to fret ${setting('frets')}, at the pitch you play it · bar ${page + 1} starts on ${cur.sym}`
         : `Bar ${page + 1} starts on ${cur.sym} · highlighted rows are the key note`)),
     scroller);
 }
@@ -393,6 +393,23 @@ function startSpectrum() {
   draw();
 }
 
+// Tap along with a record to find its tempo. Calls back with the BPM after 4+ taps.
+export function tapTempo(onBpm) {
+  let taps = [];
+  const out = h('small', {}, '');
+  const btn = h('button', { class: 'btn', onclick: () => {
+    const now = performance.now();
+    if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+    taps.push(now);
+    if (taps.length < 4) { out.textContent = ` ${4 - taps.length} more…`; return; }
+    const gaps = taps.slice(1).map((t, i) => t - taps[i]).slice(-8);
+    const bpm = Math.round(60000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length));
+    out.textContent = ` ${bpm} BPM`;
+    onBpm(Math.max(40, Math.min(220, bpm)));
+  } }, 'Tap tempo', out);
+  return btn;
+}
+
 // ---------- Project menu ----------
 const ago = (t) => {
   const m = Math.round((Date.now() - (t || 0)) / 60000);
@@ -409,6 +426,9 @@ function projectMenu() {
       h('label', { class: 'field' }, h('span', {}, 'Bars'), select(p.bars, [...Array(MAX_BARS).keys()].map((i) => i + 1), (v) => { const id = p.id; Object.assign(p, resize(p, +v, p.spb), { id }); page = Math.min(page, p.bars - 1); commit(); reopen(); })),
       h('label', { class: 'field' }, h('span', {}, 'Grid'), select(p.spb, [[16, '16 (straight)'], [12, '12 (triplet)']], (v) => { const id = p.id; Object.assign(p, resize(p, p.bars, +v), { id }); commit(); reopen(); })),
       p.spb === 16 && h('label', { class: 'field' }, h('span', {}, 'Swing'), h('input', { type: 'range', min: 0, max: 0.5, step: 0.01, value: p.swing, oninput: (e) => { p.swing = +e.target.value; }, onchange: () => commit(false) }))),
+    h('div', { class: 'row' },
+      h('label', { class: 'field grow' }, h('span', {}, 'Bass tuning'), select(p.tuning || 'std', Object.entries(TUNINGS).map(([k, t]) => [k, t.label]), (v) => { p.tuning = v; fitBass(p, setting('frets')); commit(); })),
+      tapTempo((bpm) => { p.bpm = bpm; commit(); })),
     h('h4', {}, 'Projects'),
     h('p', { class: 'hint' }, 'Everything saves as you go. Opening another project never overwrites this one.'),
     h('div', { class: 'row' },

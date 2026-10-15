@@ -1,6 +1,6 @@
 // The Key: hear where home is, then know the whole key on the neck.
 import { h, mount, toast, select } from '../ui.js';
-import { fretboard, playMidi, STRINGS, FRETS } from '../fretboard.js';
+import { fretboard, playMidi, STANDARD, FRETS } from '../fretboard.js';
 import { SCALES, SCALE_LABELS, spell, degreeName, diatonicChords, chordSymbol, mod12 } from '../theory.js';
 import { playProgression } from '../drills.js';
 import { stopBus } from '../audio.js';
@@ -62,10 +62,10 @@ function findHome(el) {
   const onTap = (pos) => {
     if (stage !== 'home') return;
     if (pos.pc === q.key) {
-      marks[`${pos.string}:${pos.fret}`] = 'right';
+      marks[`${pos.idx}:${pos.fret}`] = 'right';
       stage = 'mode';
     } else {
-      marks[`${pos.string}:${pos.fret}`] = 'wrong';
+      marks[`${pos.idx}:${pos.fret}`] = 'wrong';
       wrong++;
       if (wrong >= 3) stage = 'mode';
     }
@@ -148,10 +148,11 @@ function prove(el, params) {
       const semi = pick(scaleSemis());
       q = { type: 'find', semi };
     } else {
-      const [name, open] = pick(STRINGS);
+      const idx = rand(STANDARD.length);
+      const open = STANDARD[idx][1];
       let f, semi;
       do { f = rand(FRETS + 1); semi = mod12(open + f - key); } while (!scaleSemis().includes(semi));
-      q = { type: 'name', pos: `${name}:${f}`, semi };
+      q = { type: 'name', pos: `${idx}:${f}`, semi };
       marks[q.pos] = 'ask';
     }
     qn++;
@@ -161,7 +162,7 @@ function prove(el, params) {
     if (!q || q.type !== 'find' || answered) return;
     const ok = pos.semi === q.semi;
     q.tapped = pos.semi;
-    marks[`${pos.string}:${pos.fret}`] = ok ? 'right' : 'wrong';
+    marks[`${pos.idx}:${pos.fret}`] = ok ? 'right' : 'wrong';
     answered = ok ? 'right' : 'wrong';
     if (ok) right++;
     draw();

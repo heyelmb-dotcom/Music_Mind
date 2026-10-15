@@ -403,8 +403,7 @@ input[type=checkbox] { accent-color: var(--red); }
   border-right: 3px solid transparent; border-image: linear-gradient(90deg, #6e6a62, #e6e1d6 45%, #8d887e) 1; }
 .fb-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: var(--gauge, 1.5px); transform: translateY(-50%);
   background: linear-gradient(180deg, #f2ede2, #9c968b); box-shadow: 0 1px 1px rgba(0,0,0,0.6); }
-.str-G { --gauge: 1.4px; } .str-D { --gauge: 2px; } .str-A { --gauge: 2.7px; } .str-E { --gauge: 3.4px; }
-.str-A .fb-cell::before, .str-E .fb-cell::before { background: repeating-linear-gradient(90deg, #d8d2c5 0 1px, #9b958a 1px 2px); }
+.str-0 .fb-cell::before, .str-1 .fb-cell::before { background: repeating-linear-gradient(90deg, #d8d2c5 0 1px, #9b958a 1px 2px); }
 .fb-cell.open { background: rgba(0,0,0,0.35); border-image: none; border-right: 6px solid #efe6d2; }
 .fb-dot {
   position: relative; z-index: 1; min-width: 27px; height: 27px; padding: 0 4px; border-radius: 14px; display: grid; place-items: center;
@@ -487,3 +486,9 @@ input[type=checkbox] { accent-color: var(--red); }
 .fb-cell.used .fb-dot { background: var(--paper); }
 .fb-cell.used .fb-dot.tonic { background: var(--red); }
 .fb-cell.now .fb-dot { background: var(--accent) !important; color: var(--ink) !important; transform: scale(1.18); box-shadow: 0 0 16px rgba(201, 162, 78, 0.8); }
+
+/* Band songs */
+.parts { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.part { background: var(--card); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; }
+.part-head b { font: 500 19px var(--serif); }
+.part .lessons { margin: 8px 0; }

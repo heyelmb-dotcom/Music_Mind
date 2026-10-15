@@ -1,5 +1,6 @@
 // Local persistence. Everything lives on this device; export/import for backups.
 import { migrate } from './project.js';
+import { BAND_DRAFTS } from './data/banddrafts.js';
 
 const KEY = 'musicmind.v1';
 export const DEFAULT_SETTINGS = { bassPlay: 'up', frets: 20 };
@@ -14,6 +15,8 @@ const defaults = () => ({
   projects: {}, // id -> Studio project (every project autosaves)
   currentId: null, // the project open in the Studio
   settings: { ...DEFAULT_SETTINGS }, // bassPlay: 'up' | 'real' | 'both', frets: 20 | 22
+  bandSongs: {}, // id -> band song { title, artist, tuning, key, mode, bpm, notes, sources, parts: [{ id, name, note }] }
+  seeded: {}, // which built-in drafts have been copied in (so deleting one sticks)
 });
 
 const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -34,6 +37,12 @@ function upgrade(st) {
     delete st.saved;
   }
   st.settings = { ...DEFAULT_SETTINGS, ...(st.settings || {}) };
+  st.bandSongs = st.bandSongs || {};
+  st.seeded = st.seeded || {};
+  if (!st.seeded.bandDrafts1) {
+    for (const d of BAND_DRAFTS) if (!st.bandSongs[d.id]) st.bandSongs[d.id] = JSON.parse(JSON.stringify({ ...d, created: Date.now() }));
+    st.seeded.bandDrafts1 = true;
+  }
   st._upgraded = JSON.stringify(st) !== before;
   return st;
 }
@@ -46,7 +55,7 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     state = upgrade(raw ? { ...defaults(), ...JSON.parse(raw) } : defaults());
   } catch (_) {
-    state = defaults();
+    state = upgrade(defaults()); // storage blocked: still start with the drafts
   }
   // write the upgraded shape straight away so ids and migrated notes stay stable
   if (state._upgraded) save();
@@ -127,4 +136,17 @@ export function deleteProject(id) {
     delete s.projects[id];
     if (s.currentId === id) s.currentId = listProjects()[0]?.id || null;
   });
+}
+
+// ---------- Band songs ----------
+export const listBandSongs = () => Object.values(load().bandSongs).sort((a, b) => a.title.localeCompare(b.title));
+export const getBandSong = (id) => load().bandSongs[id] || null;
+export function saveBandSong(song) { update((s) => { s.bandSongs[song.id] = song; }); }
+export function deleteBandSong(id) { update((s) => { delete s.bandSongs[id]; }); }
+export function newBandSong() {
+  const id = 'song' + Date.now().toString(36);
+  const song = { id, title: 'New song', artist: '', tuning: 'std', key: 4, mode: 'minor', bpm: null, notes: '', sources: [], draft: false, created: Date.now(),
+    parts: [{ id: 'p1', name: 'Intro / main riff', note: '' }, { id: 'p2', name: 'Verse', note: '' }, { id: 'p3', name: 'Chorus', note: '' }] };
+  saveBandSong(song);
+  return song;
 }

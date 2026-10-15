@@ -190,3 +190,31 @@ test('old projects migrate: chords become events, bass drops into the real regis
   assert.deepEqual(m.chords.map((e) => e.r), ['I5', 'bVI5']);
   assert.equal(bassMidi(m, m.tracks.find((t) => t.id === 'bass').steps[0]), 34); // Bb1: A string, fret 1
 });
+
+test('tunings: grid reaches the low string, fingering uses the right strings', async () => {
+  const { fingering } = await import('../js/fingering.js');
+  const { bassRange, lowestOf, TUNINGS } = await import('../js/project.js');
+  const p = newProject({ key: 2, mode: 'minor' }); // D minor
+  p.tuning = 'dropD';
+  const bass = p.tracks.find((t) => t.id === 'bass');
+  bass.steps[0] = lowestOf(p, 0); // the lowest D in drop D
+  assert.equal(bassMidi(p, bass.steps[0]), 26);
+  const f = fingering(p, 20).get(0);
+  assert.deepEqual([f.string, f.fret, f.idx], ['D', 0, 0]);
+  p.tuning = 'fiveDown';
+  assert.equal(bassMidi(p, bassRange(p, 20)[0]), 21); // low A on a 5-string tuned down
+  for (const t of Object.values(TUNINGS)) assert.ok(t.strings.every(([, m], i, a) => i === 0 || m > a[i - 1][1]));
+});
+
+test('band drafts: every song has a valid tuning, key and parts, and its starter builds', async () => {
+  const { BAND_DRAFTS, starterSketch } = await import('../js/data/banddrafts.js');
+  const { TUNINGS } = await import('../js/project.js');
+  assert.equal(BAND_DRAFTS.length, 9);
+  for (const s of BAND_DRAFTS) {
+    assert.ok(TUNINGS[s.tuning], s.id);
+    assert.ok(s.parts.length >= 3);
+    const p = fromSketch(starterSketch(s, s.parts[0]));
+    assert.equal(p.tuning, s.tuning);
+    assert.equal(p.key, s.key);
+  }
+});

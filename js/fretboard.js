@@ -3,7 +3,8 @@ import { h } from './ui.js';
 import { SCALES, mod12, spell, degreeName } from './theory.js';
 import { trigger, unlockAudio, getCtx } from './audio.js';
 
-export const STRINGS = [['G', 7, 43], ['D', 2, 38], ['A', 9, 33], ['E', 4, 28]]; // name, pitch class, open MIDI
+// Standard tuning, low to high: [name, open MIDI]. Pass `strings` for any other tuning.
+export const STANDARD = [['E', 28], ['A', 33], ['D', 38], ['G', 43]];
 export const FRETS = 12;
 const MARKERS = { 3: '•', 5: '•', 7: '•', 9: '•', 12: '••', 15: '•', 17: '•', 19: '•', 21: '•', 24: '••' };
 
@@ -12,19 +13,20 @@ export async function playMidi(midi) {
   trigger('pluckbass', getCtx().currentTime + 0.01, midi, 0.6, 1);
 }
 
-// opts: { key, mode, labels: 'degree'|'name', showAll, hideKey, frets, onTap(pos),
-//         marks: { 'A:5': className }, markLabels: { 'A:5': text } }
+// opts: { key, mode, labels: 'degree'|'name', showAll, hideKey, frets, strings, onTap(pos),
+//         marks: { 'stringIndex:fret': className }, markLabels: { 'stringIndex:fret': text } }
+// String index 0 is the lowest string; rows are drawn highest string on top, like tab.
 export function fretboard(opts) {
-  const { key, mode = 'major', labels = 'degree', showAll = false, onTap, marks = {}, markLabels = {}, hideKey = false, frets = FRETS } = opts;
+  const { key, mode = 'major', labels = 'degree', showAll = false, onTap, marks = {}, markLabels = {}, hideKey = false, frets = FRETS, strings = STANDARD } = opts;
   const scale = SCALES[mode] || SCALES.major;
   const cols = { gridTemplateColumns: `22px 38px repeat(${frets}, 1fr)` };
-  const rows = STRINGS.map(([name, open, openMidi]) => {
+  const rows = strings.map(([name, openMidi], idx) => {
     const cells = [];
     for (let f = 0; f <= frets; f++) {
-      const pc = mod12(open + f);
+      const pc = mod12(openMidi + f);
       const semi = mod12(pc - key);
       const inKey = scale.includes(semi);
-      const pos = `${name}:${f}`;
+      const pos = `${idx}:${f}`;
       const mark = marks[pos];
       const show = !hideKey && (inKey || showAll);
       const label = labels === 'degree' ? degreeName(semi) : spell(pc, key, mode);
@@ -32,11 +34,11 @@ export function fretboard(opts) {
         class: 'fb-cell' + (f === 0 ? ' open' : '') + (mark ? ' ' + mark : ''),
         'aria-label': `${name} string fret ${f}`,
         'data-pos': pos,
-        onclick: () => { playMidi(openMidi + f); onTap && onTap({ string: name, fret: f, pc, semi, inKey }); },
+        onclick: () => { playMidi(openMidi + f); onTap && onTap({ string: name, idx, fret: f, pc, semi, inKey }); },
       }, show || mark ? h('span', { class: 'fb-dot' + (semi === 0 && (show || markLabels[pos]) ? ' tonic' : '') + (inKey ? '' : ' outside') }, markLabels[pos] ?? (mark && !show ? '' : label)) : null));
     }
-    return h('div', { class: `fb-row str-${name}`, style: cols }, h('span', { class: 'fb-name' }, name), cells);
-  });
+    return h('div', { class: `fb-row str-${idx}`, style: { ...cols, '--gauge': `${1.4 + (strings.length - 1 - idx) * 0.7}px` } }, h('span', { class: 'fb-name' }, name), cells);
+  }).reverse();
   // Pearl dot inlays, set into the wood behind the strings, like a real neck.
   const inlays = [h('span', {}), h('span', {})];
   for (let f = 1; f <= frets; f++) inlays.push(h('span', { class: 'fb-inlay' + (MARKERS[f] === '••' ? ' double' : MARKERS[f] ? ' single' : '') }));

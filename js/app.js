@@ -41,7 +41,7 @@ function route() {
     case 'studio': studio.render(view); break;
     case 'key': cleanup = keyView.render(view, arg, params) || null; break;
     case 'path': path.render(view); break;
-    case 'bass': arg === 'p' ? bass.renderProject(view, arg2) : arg ? bass.renderLesson(view, arg) : bass.renderList(view); break;
+    case 'bass': arg === 'p' ? bass.renderProject(view, arg2) : arg === 's' ? bass.renderBandSong(view, arg2, params) : arg ? bass.renderLesson(view, arg) : bass.renderList(view); break;
     case 'ear': ear.renderList(view); break;
     case 'drill': cleanup = ear.renderDrill(view, arg, params); break;
     case 'songs': songs.renderList(view); break;

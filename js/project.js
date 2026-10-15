@@ -28,13 +28,33 @@ export const VOICES_BY_KIND = {
 export const NOTE_RANGE = { lead: 24 };
 export const BASE_MIDI = { lead: 60, chords: 53 };
 
+// ---------- Bass tunings ----------
+// Open strings low to high, as [name, MIDI]. Heavy music lives in the lower ones.
+export const TUNINGS = {
+  std: { label: 'E standard (E A D G)', strings: [['E', 28], ['A', 33], ['D', 38], ['G', 43]] },
+  dropD: { label: 'Drop D (D A D G)', strings: [['D', 26], ['A', 33], ['D', 38], ['G', 43]] },
+  half: { label: 'Half step down (Eb Ab Db Gb)', strings: [['Eb', 27], ['Ab', 32], ['Db', 37], ['Gb', 42]] },
+  dStd: { label: 'D standard (D G C F)', strings: [['D', 26], ['G', 31], ['C', 36], ['F', 41]] },
+  dropCs: { label: 'Drop C# (C# G# C# F#)', strings: [['C#', 25], ['G#', 32], ['C#', 37], ['F#', 42]] },
+  dropC: { label: 'Drop C (C G C F)', strings: [['C', 24], ['G', 31], ['C', 36], ['F', 41]] },
+  cStd: { label: 'C standard (C F Bb Eb)', strings: [['C', 24], ['F', 29], ['Bb', 34], ['Eb', 39]] },
+  dropB: { label: 'Drop B (B F# B E)', strings: [['B', 23], ['F#', 30], ['B', 35], ['E', 40]] },
+  adgc: { label: '4-string A D G C', strings: [['A', 21], ['D', 26], ['G', 31], ['C', 36]] },
+  five: { label: '5-string (B E A D G)', strings: [['B', 23], ['E', 28], ['A', 33], ['D', 38], ['G', 43]] },
+  fiveDown: { label: '5-string, whole step down (A D G C F)', strings: [['A', 21], ['D', 26], ['G', 31], ['C', 36], ['F', 41]] },
+};
+export const tuningOf = (p) => TUNINGS[p?.tuning] || TUNINGS.std;
+
 // ---------- Bass at real pitch ----------
-export const BASS_LOW = 28; // E1, the open E string
-export const bassBase = (key) => BASS_LOW + mod12(key - 4); // lowest home note on the neck
-export const bassTop = (frets = 20) => 43 + frets; // G string at the last fret
+export const BASS_LOW = 28; // E1, the open E string (the anchor for stored notes)
+export const bassBase = (key) => BASS_LOW + mod12(key - 4); // the stored 0: lowest home note at or above E1
 export const bassMidi = (p, v) => bassBase(p.key) + v;
-// Row range for the bass grid in this key (semitones relative to bassBase).
-export const bassRange = (p, frets = 20) => [BASS_LOW - bassBase(p.key), bassTop(frets) - bassBase(p.key)];
+const lowest = (p) => tuningOf(p).strings[0][1];
+const highest = (p, frets) => tuningOf(p).strings[tuningOf(p).strings.length - 1][1] + frets;
+// Row range for the bass grid: everything reachable in this tuning (semitones relative to bassBase).
+export const bassRange = (p, frets = 20) => [lowest(p) - bassBase(p.key), highest(p, frets) - bassBase(p.key)];
+// The lowest playable note of a pitch class in this tuning, as a stored value.
+export const lowestOf = (p, semiFromKey) => lowest(p) + mod12(p.key + semiFromKey - lowest(p)) - bassBase(p.key);
 
 // Old projects stored bass relative to C2 + key, an octave above a real bass.
 // Move each note down an octave into the real register (where it still fits).
@@ -63,6 +83,7 @@ export function newProject(opts = {}) {
     bars,
     spb,
     swing: opts.swing || 0,
+    tuning: opts.tuning || 'std',
     chords: barChords(opts.chords || ['I'], bars, spb),
     fingering: {},
     tracks: TRACK_DEFS.map((d) => ({
@@ -205,7 +226,7 @@ export function resize(p, bars, spb) {
 // (Bass sketches are written in the old register and moved down onto the neck.)
 // Chords track hits use the drum notation. Patterns repeat to fill the loop.
 export function fromSketch(s) {
-  const p = newProject({ bars: s.bars, spb: s.spb, bpm: s.bpm, key: s.key, mode: s.mode, swing: s.swing, chords: s.chords, name: s.name });
+  const p = newProject({ bars: s.bars, spb: s.spb, bpm: s.bpm, key: s.key, mode: s.mode, swing: s.swing, chords: s.chords, name: s.name, tuning: s.tuning });
   const total = p.bars * p.spb;
   for (const t of p.tracks) {
     const def = s.tracks?.[t.id];

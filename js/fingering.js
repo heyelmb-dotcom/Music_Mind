@@ -1,28 +1,28 @@
-// Where to play each bass note on a 4-string neck.
+// Where to play each bass note on the neck, in the project's tuning.
 // The same pitch often lives in two or three places; by default we pick the spot
 // closest to where the hand already is (how bassists actually finger lines), and
-// any note can be overridden by hand, saved with the project as "A:5".
-import { bassMidi } from './project.js';
+// any note can be overridden by hand, saved with the project as "stringIndex:fret".
+import { bassMidi, tuningOf } from './project.js';
 
-const OPEN = [['E', 28], ['A', 33], ['D', 38], ['G', 43]];
-
-export function positionsFor(midi, frets = 20) {
-  return OPEN.map(([string, open]) => ({ string, fret: midi - open })).filter((c) => c.fret >= 0 && c.fret <= frets);
+// strings: [[name, openMidi], …] low to high
+export function positionsFor(midi, frets = 20, strings = tuningOf(null).strings) {
+  return strings.map(([string, open], idx) => ({ string, idx, fret: midi - open })).filter((c) => c.fret >= 0 && c.fret <= frets);
 }
 
-const key = (c) => `${c.string}:${c.fret}`;
+export const posKey = (c) => `${c.idx}:${c.fret}`;
 
-// step -> { string, fret, midi } for every bass note in the project.
+// step -> { string, idx, fret, midi } for every bass note in the project.
 export function fingering(p, frets = 20) {
+  const strings = tuningOf(p).strings;
   const bass = p.tracks.find((t) => t.id === 'bass');
   const out = new Map();
   let hand = null;
   bass.steps.forEach((v, s) => {
     if (v === null || v === undefined) return;
     const midi = bassMidi(p, v);
-    const cands = positionsFor(midi, frets);
+    const cands = positionsFor(midi, frets, strings);
     if (!cands.length) return;
-    let pick = cands.find((c) => key(c) === p.fingering?.[s]);
+    let pick = cands.find((c) => posKey(c) === p.fingering?.[s]);
     if (!pick) {
       const cost = (c) => {
         if (hand === null) return c.fret;
@@ -41,8 +41,8 @@ export function fingering(p, frets = 20) {
 export function cycleFingering(p, step, frets = 20) {
   const cur = fingering(p, frets).get(step);
   if (!cur) return;
-  const cands = positionsFor(cur.midi, frets);
-  const i = cands.findIndex((c) => key(c) === key(cur));
+  const cands = positionsFor(cur.midi, frets, tuningOf(p).strings);
+  const i = cands.findIndex((c) => posKey(c) === posKey(cur));
   p.fingering = p.fingering || {};
-  p.fingering[step] = key(cands[(i + 1) % cands.length]);
+  p.fingering[step] = posKey(cands[(i + 1) % cands.length]);
 }
