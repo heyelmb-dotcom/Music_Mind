@@ -1,5 +1,5 @@
 // The concept path. Concepts are always open to study; their trials are what unlock songs.
-import { chordRootPc, mod12 } from '../theory.js';
+import { parseRoman, mod12 } from '../theory.js';
 
 const SNAREISH = ['snare', 'clap', 'rim'];
 const HATISH = ['hat', 'openhat', 'shaker', 'rim'];
@@ -115,14 +115,16 @@ export const CONCEPTS = [
     demo: 'rootmotion',
     trial: {
       type: 'build',
-      task: 'In the Studio, set a progression of at least 2 different chords, and write a bassline that plays each chord\'s root on beat 1 of its bar. (The "Roots" button is cheating, but cheating you can learn from.)',
+      task: 'In the Studio, set a progression of at least 2 different chords, and write a bassline that plays each chord\'s root right where the chord starts. (The "Roots" button is cheating, but cheating you can learn from.)',
       check(p) {
-        if (new Set(p.chords).size < 2) return { ok: false, msg: 'Use at least two different chords in the chord lane.' };
+        if (new Set(p.chords.map((e) => e.r)).size < 2) return { ok: false, msg: 'Use at least two different chords in the chord track.' };
         const bass = p.tracks.find((t) => t.id === 'bass');
-        for (let b = 0; b < p.bars; b++) {
-          const v = bass.steps[b * p.spb];
-          if (v === null || v === undefined) return { ok: false, msg: `Bar ${b + 1}: no bass note on beat 1.` };
-          if (mod12(p.key + v) !== chordRootPc(p.chords[b], p.key)) return { ok: false, msg: `Bar ${b + 1}: the bass on beat 1 isn't the root of ${p.chords[b]}.` };
+        for (const e of p.chords) {
+          const v = bass.steps[e.s];
+          const where = `Bar ${Math.floor(e.s / p.spb) + 1}, step ${(e.s % p.spb) + 1}`;
+          if (v === null || v === undefined) return { ok: false, msg: `${where}: no bass note where ${e.r} starts.` };
+          const want = e.b ?? parseRoman(e.r).semi;
+          if (mod12(v) !== mod12(want)) return { ok: false, msg: `${where}: the bass isn't on the root of ${e.r}.` };
         }
         return { ok: true };
       },

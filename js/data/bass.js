@@ -1,5 +1,5 @@
 // Bass Lab lessons. One loop per lesson; each variant swaps only the bass so you hear exactly what the bass does.
-import { parseRoman, QUALITIES } from '../theory.js';
+import { parseRoman } from '../theory.js';
 
 // Template tokens, one per step, applied per bar:
 // R root · 3 chord's 3rd · 5 fifth · 7 chord's 7th (b7 on triads) · O octave
@@ -9,7 +9,7 @@ export function bassFrom(chords, tmpl) {
   const fit = (n) => { while (n > 19) n -= 12; while (n < 0) n += 12; return n; };
   return chords.map((r, i) => {
     const c = parseRoman(r);
-    const ints = QUALITIES[c.quality].ints;
+    const ints = c.ints;
     const next = parseRoman(chords[(i + 1) % chords.length]).semi;
     return toks.map((t) => {
       if (t === '.') return '.';

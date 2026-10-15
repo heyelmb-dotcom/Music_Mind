@@ -1,4 +1,10 @@
-// Studio project model: 8 tracks, 1-4 bars, 16 (straight) or 12 (triplet) steps per bar.
+// Studio project model: 8 tracks, 1-8 bars, 16 (straight) or 12 (triplet) steps per bar.
+// Chords are events on any step ({ s, r, b? }: step, roman numeral, optional slash bass).
+// Bass notes are stored at real bass pitch: semitones above the lowest home note on a 4-string bass.
+import { mod12, parseRoman } from './theory.js';
+
+export const MAX_BARS = 8;
+export const VERSION = 2;
 
 export const TRACK_DEFS = [
   { id: 'kick', name: 'Kick', kind: 'drum', voice: 'kick', layer: 'rhythm' },
@@ -18,19 +24,38 @@ export const VOICES_BY_KIND = {
   lead: ['square', 'saw', 'flute', 'bell', 'guitar', 'pluck'],
 };
 
-// Range of rows in the note grid, in semitones above the track's base note.
-export const NOTE_RANGE = { bass: 19, lead: 24 };
-export const BASE_MIDI = { bass: 36, lead: 60, chords: 53 };
+// Range of rows in the lead grid, in semitones above its base note.
+export const NOTE_RANGE = { lead: 24 };
+export const BASE_MIDI = { lead: 60, chords: 53 };
+
+// ---------- Bass at real pitch ----------
+export const BASS_LOW = 28; // E1, the open E string
+export const bassBase = (key) => BASS_LOW + mod12(key - 4); // lowest home note on the neck
+export const bassTop = (frets = 20) => 43 + frets; // G string at the last fret
+export const bassMidi = (p, v) => bassBase(p.key) + v;
+// Row range for the bass grid in this key (semitones relative to bassBase).
+export const bassRange = (p, frets = 20) => [BASS_LOW - bassBase(p.key), bassTop(frets) - bassBase(p.key)];
+
+// Old projects stored bass relative to C2 + key, an octave above a real bass.
+// Move each note down an octave into the real register (where it still fits).
+function legacyBass(v, key, octave = 0) {
+  const old = 36 + key + v + octave * 12;
+  const real = old - 12 >= BASS_LOW ? old - 12 : old;
+  return real - bassBase(key);
+}
 
 export const isMelodic = (t) => t.kind === 'bass' || t.kind === 'lead';
 export const emptyStep = (t) => (isMelodic(t) ? null : 0);
 // Melodic steps hold a semitone (0 is a real note); drum/chord steps hold a velocity.
 export const hasHit = (t, v) => (isMelodic(t) ? v !== null && v !== undefined : !!v);
 
+const barChords = (list, bars, spb) => Array.from({ length: bars }, (_, i) => ({ s: i * spb, r: list[i % list.length] }));
+
 export function newProject(opts = {}) {
   const bars = opts.bars || 1;
   const spb = opts.spb || 16;
   const p = {
+    v: VERSION,
     name: opts.name || 'Untitled',
     bpm: opts.bpm || 96,
     key: opts.key ?? 0,
@@ -38,7 +63,8 @@ export function newProject(opts = {}) {
     bars,
     spb,
     swing: opts.swing || 0,
-    chords: Array.from({ length: bars }, (_, i) => (opts.chords || ['I'])[i % (opts.chords || ['I']).length]),
+    chords: barChords(opts.chords || ['I'], bars, spb),
+    fingering: {},
     tracks: TRACK_DEFS.map((d) => ({
       id: d.id,
       name: d.name,
@@ -60,36 +86,123 @@ export function newProject(opts = {}) {
   return p;
 }
 
+// ---------- Chord events ----------
+export function sortChords(p) {
+  const total = p.bars * p.spb;
+  const byStep = new Map();
+  for (const e of p.chords) if (e.s >= 0 && e.s < total && parseRoman(e.r)) byStep.set(e.s, e);
+  p.chords = [...byStep.values()].sort((a, b) => a.s - b.s);
+  if (!p.chords.length) p.chords = [{ s: 0, r: 'I' }];
+  if (p.chords[0].s !== 0) p.chords.unshift({ ...p.chords[p.chords.length - 1], s: 0 });
+  return p;
+}
+
+// The chord sounding at a step.
+export function chordAt(p, step) {
+  let cur = p.chords[0];
+  for (const e of p.chords) { if (e.s <= step) cur = e; else break; }
+  return cur;
+}
+
+// The chord after the one sounding at a step (wraps to the start of the loop).
+export function nextChord(p, step) {
+  const cur = chordAt(p, step);
+  const i = p.chords.indexOf(cur);
+  return p.chords[(i + 1) % p.chords.length];
+}
+
+// Where each chord sits inside one bar: [{ start, end, ev, carried }] in steps within the bar.
+export function chordSegments(p, bar) {
+  const from = bar * p.spb, to = from + p.spb;
+  const segs = [];
+  const first = chordAt(p, from);
+  let cur = { start: 0, ev: first, carried: first.s !== from };
+  for (const e of p.chords) {
+    if (e.s <= from || e.s >= to) continue;
+    segs.push({ ...cur, end: e.s - from });
+    cur = { start: e.s - from, ev: e, carried: false };
+  }
+  segs.push({ ...cur, end: p.spb });
+  return segs;
+}
+
+// Bring an older saved project up to date.
+export function migrate(p) {
+  if (!p || p.v >= VERSION) return p;
+  if (Array.isArray(p.chords) && typeof p.chords[0] === 'string') p.chords = barChords(p.chords, p.bars, p.spb);
+  const bass = p.tracks.find((t) => t.id === 'bass');
+  if (bass) {
+    bass.steps = bass.steps.map((v) => (v === null || v === undefined ? null : legacyBass(v, p.key, bass.octave || 0)));
+    bass.octave = 0;
+  }
+  p.fingering = p.fingering || {};
+  p.v = VERSION;
+  return sortChords(p);
+}
+
+// After a key change, keep every bass note on the neck.
+export function fitBass(p, frets = 20) {
+  const [lo, hi] = bassRange(p, frets);
+  const bass = p.tracks.find((t) => t.id === 'bass');
+  bass.steps = bass.steps.map((v) => {
+    if (v === null || v === undefined) return null;
+    while (v < lo) v += 12;
+    while (v > hi) v -= 12;
+    return v;
+  });
+}
+
 export const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // Change bars / steps-per-bar while keeping the musical positions of notes.
+// New bars copy the last existing bar (riffs repeat); removing bars trims the end.
 export function resize(p, bars, spb) {
   const out = clone(p);
-  const oldTotal = p.bars * p.spb;
+  bars = Math.max(1, Math.min(MAX_BARS, bars));
   out.bars = bars;
   out.spb = spb;
-  out.chords = Array.from({ length: bars }, (_, i) => p.chords[i % p.chords.length]);
   out.swing = spb === 12 ? 0 : p.swing;
+  // map an old step to the new grid (null if it doesn't land on a new step)
+  const mapStep = (oldS) => {
+    const bar = Math.floor(oldS / p.spb);
+    const pos = ((oldS % p.spb) * spb) / p.spb;
+    return Number.isInteger(pos) ? bar * spb + pos : null;
+  };
+  const srcBar = (bar) => (bar < p.bars ? bar : p.bars - 1);
   for (const t of out.tracks) {
     const src = p.tracks.find((x) => x.id === t.id).steps;
     const steps = Array(bars * spb).fill(emptyStep(t));
     for (let i = 0; i < bars * spb; i++) {
       const bar = Math.floor(i / spb);
-      const inBar = i % spb;
-      // only map steps that land exactly on an old step position
-      const oldInBar = (inBar * p.spb) / spb;
+      const oldInBar = ((i % spb) * p.spb) / spb;
       if (!Number.isInteger(oldInBar)) continue;
-      const oldIdx = ((bar % p.bars) * p.spb + oldInBar) % oldTotal;
-      steps[i] = src[oldIdx];
+      steps[i] = src[srcBar(bar) * p.spb + oldInBar];
     }
     t.steps = steps;
   }
-  return out;
+  const chords = [];
+  for (let bar = 0; bar < bars; bar++) {
+    const sb = srcBar(bar);
+    for (const e of p.chords) {
+      if (Math.floor(e.s / p.spb) !== sb) continue;
+      const ns = mapStep(e.s);
+      if (ns !== null) chords.push({ ...e, s: ns - sb * spb + bar * spb });
+    }
+  }
+  // a copied bar starts with whatever chord was sounding at the start of the last bar
+  if (bars > p.bars) {
+    const carry = chordAt(p, (p.bars - 1) * p.spb);
+    for (let bar = p.bars; bar < bars; bar++) if (!chords.some((e) => e.s === bar * spb)) chords.push({ ...carry, s: bar * spb });
+  }
+  out.chords = chords;
+  out.fingering = {};
+  return sortChords(out);
 }
 
 // ---------- Compact sketch notation (how song sketches are authored) ----------
 // Drums: "x...x...x...x..." (x hit, o ghost, . rest). Spaces are ignored.
 // Melodic: "0 . . 7 . . 5 ." — semitones above the key tonic, '.' rest.
+// (Bass sketches are written in the old register and moved down onto the neck.)
 // Chords track hits use the drum notation. Patterns repeat to fill the loop.
 export function fromSketch(s) {
   const p = newProject({ bars: s.bars, spb: s.spb, bpm: s.bpm, key: s.key, mode: s.mode, swing: s.swing, chords: s.chords, name: s.name });
@@ -105,6 +218,10 @@ export function fromSketch(s) {
       const tok = tokens[i % tokens.length];
       if (isMelodic(t)) t.steps[i] = tok === '.' ? null : Number(tok);
       else t.steps[i] = tok === 'x' ? 1 : tok === 'o' ? 0.5 : 0;
+    }
+    if (t.kind === 'bass') {
+      t.steps = t.steps.map((v) => (v === null ? null : legacyBass(v, p.key, t.octave || 0)));
+      t.octave = 0;
     }
   }
   return p;

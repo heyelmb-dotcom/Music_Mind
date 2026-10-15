@@ -1,6 +1,6 @@
 // Standard MIDI File export so any sketch can be dragged into Logic.
 import { chordMidi } from './theory.js';
-import { BASE_MIDI, gateSteps, hasHit, isMelodic } from './project.js';
+import { BASE_MIDI, gateSteps, hasHit, isMelodic, chordAt, bassMidi } from './project.js';
 
 const PPQ = 480;
 const GM_DRUMS = { kick: 36, '808': 35, snare: 38, clap: 39, rim: 37, hat: 42, openhat: 46, shaker: 70, tom: 45 };
@@ -63,11 +63,12 @@ export function projectToMidi(p, loops = 1) {
           continue;
         }
         const len = Math.round(gateSteps(tr, s, total, false) * tps);
-        if (isMelodic(tr)) {
+        if (tr.kind === 'bass') {
+          note(tick, len, bassMidi(p, v), 96); // real bass pitch for Logic
+        } else if (isMelodic(tr)) {
           note(tick, len, BASE_MIDI[tr.kind] + p.key + v + tr.octave * 12, 96);
         } else {
-          const bar = Math.floor(s / p.spb);
-          for (const n of chordMidi(p.chords[bar], p.key, BASE_MIDI.chords + 2 + tr.octave * 12)) note(tick, len, n, 80);
+          for (const n of chordMidi(chordAt(p, s).r, p.key, BASE_MIDI.chords + 2 + tr.octave * 12)) note(tick, len, n, 80);
         }
       }
     }

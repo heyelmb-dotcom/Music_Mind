@@ -1,12 +1,12 @@
 // The Studio: 8-track step sequencer sandbox.
 import { h, mount, ask, sheet, toast, select, shareOrDownload, download, pickFile } from '../ui.js';
-import { bassRole, degreeName, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordRootPc, diatonicChords, BORROWED, inScale, mod12, noteName } from '../theory.js';
-import { newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND } from '../project.js';
+import { bassRole, degreeName, spell, NOTE_NAMES, SCALE_LABELS, chordSymbol, chordMidi, chordTones, parseRoman, parseChordInput, diatonicChords, BORROWED, inScale, mod12 } from '../theory.js';
+import { migrate as migrateImport, newProject, fromSketch, resize, clone, isMelodic, emptyStep, NOTE_RANGE, BASE_MIDI, VOICES_BY_KIND, MAX_BARS, chordAt, nextChord, chordSegments, sortChords, bassMidi, bassBase, bassRange, fitBass, BASS_LOW } from '../project.js';
 import { Player } from '../sequencer.js';
 import { unlockAudio, trigger, getAnalyser, getCtx } from '../audio.js';
 import { projectToMidi } from '../midi.js';
 import { PROGRESSIONS } from '../drills.js';
-import { load, update, labelMode, setLabelMode } from '../store.js';
+import { labelMode, setLabelMode, setting, listProjects, currentProject, addProject, touchProject, openProject, deleteProject } from '../store.js';
 import { DEMOS } from '../data/demos.js';
 import { allSongs, isUnlocked } from '../library.js';
 
@@ -18,6 +18,7 @@ let page = 0;
 let scaleLock = true;
 let root = null;
 let rafSpec = null;
+let rollScroll = null; // keeps the bass/lead grid scrolled where you left it
 
 function starter() {
   const p = fromSketch({
@@ -28,22 +29,27 @@ function starter() {
   return p;
 }
 
+// The project open in the Studio. Every project lives in the library and autosaves.
 export function getProject() {
-  if (!project) project = load().project || starter();
+  project = currentProject() || addProject(starter());
   return project;
 }
 
-// Replace the whole project (used by demos, sketches, imports).
+// Open a copy of a project as a NEW project (demos, sketches, Bass Lab parts, imports).
+// Whatever was open stays saved in the library.
 export function loadProject(p, origin = null) {
-  project = clone(p);
-  project.origin = origin;
+  const copy = clone(p);
+  delete copy.id;
+  copy.origin = origin;
+  project = addProject(copy);
   page = 0;
+  rollScroll = null;
   if (!project.tracks.find((t) => t.id === selected)) selected = 'kick';
-  persist();
+  if (player.playing) player.syncChannels(project);
 }
 
 function persist() {
-  update((s) => { s.project = project; });
+  touchProject(project);
   if (player.playing) player.syncChannels(project);
 }
 
@@ -62,8 +68,12 @@ async function preview(tr, midiOrNull) {
   const ch = player.channels[tr.id];
   const t = getCtx().currentTime + 0.01;
   if (tr.kind === 'drum') trigger(tr.voice, t, 0, 0, 1, ch.input);
-  else if (tr.kind === 'chords') chordMidi(project.chords[page], project.key, BASE_MIDI.chords + 2 + tr.octave * 12).forEach((n) => trigger(tr.voice, t, n, 0.6, 0.55, ch.input));
-  else trigger(tr.voice, t, midiOrNull, 0.35, 0.9, ch.input);
+  else if (tr.kind === 'chords') chordMidi(chordAt(project, page * project.spb).r, project.key, BASE_MIDI.chords + 2 + tr.octave * 12).forEach((n) => trigger(tr.voice, t, n, 0.6, 0.55, ch.input));
+  else if (tr.kind === 'bass') {
+    const mode = setting('bassPlay');
+    if (mode !== 'real') trigger(tr.voice, t, midiOrNull + 12, 0.35, mode === 'both' ? 0.6 : 0.9, ch.input);
+    if (mode !== 'up') trigger(tr.voice, t, midiOrNull, 0.35, 0.9, ch.input);
+  } else trigger(tr.voice, t, midiOrNull, 0.35, 0.9, ch.input);
 }
 
 async function previewChord(r) {
@@ -78,11 +88,17 @@ const keyedName = (midi) => spell(midi, project.key, project.mode) + (Math.floor
 function stepLabel(tr, s, v) {
   const p = project;
   if (labelMode() === 'key') return degreeName(v);
-  if (tr.kind === 'bass') {
-    const bar = Math.floor(s / p.spb);
-    return bassRole(v, p.chords[bar], p.chords[(bar + 1) % p.bars]);
-  }
+  if (tr.kind === 'bass') return bassRole(v, chordAt(p, s).r, nextChord(p, s).r);
   return spell(p.key + v, p.key, p.mode);
+}
+
+// How a chord event reads: the symbol (Bb5, F/A) and its number in the key (I5, V/3).
+export function chordLabel(p, ev) {
+  const hasBass = ev.b !== undefined && ev.b !== null;
+  return {
+    sym: chordSymbol(ev.r, p.key, p.mode, hasBass ? ev.b : null, ev.sp),
+    roman: ev.r + (hasBass ? '/' + bassRole(ev.b, ev.r) : ''),
+  };
 }
 
 export function labelToggle(onchange) {
@@ -91,7 +107,7 @@ export function labelToggle(onchange) {
     h('button', { class: 'seg-btn' + (cur === id ? ' on' : ''), onclick: () => { setLabelMode(id); onchange(); } }, label)));
 }
 
-const melodicMidi = (tr, row) => BASE_MIDI[tr.kind] + project.key + row + tr.octave * 12;
+const melodicMidi = (tr, row) => (tr.kind === 'bass' ? bassMidi(project, row) : BASE_MIDI[tr.kind] + project.key + row + tr.octave * 12);
 
 // ---------- Transport ----------
 function transport() {
@@ -111,44 +127,98 @@ function transport() {
   return h('div', { class: 'transport' },
     playBtn,
     h('label', { class: 'field' }, h('span', {}, 'BPM'), bpm),
-    h('label', { class: 'field' }, h('span', {}, 'Key'), select(p.key, NOTE_NAMES.map((n, i) => [i, n]), (v) => { p.key = +v; commit(); })),
+    h('label', { class: 'field' }, h('span', {}, 'Key'), select(p.key, NOTE_NAMES.map((n, i) => [i, n]), (v) => { p.key = +v; fitBass(p, setting('frets')); commit(); })),
     h('label', { class: 'field' }, h('span', {}, 'Scale'), select(p.mode, Object.entries(SCALE_LABELS), (v) => { p.mode = v; commit(); })),
     h('button', { class: 'btn', onclick: projectMenu }, '☰'));
 }
 
-// ---------- Chord lane ----------
+// ---------- Chord track ----------
+// Chords are blocks on the same step grid as the drums. Tap anywhere in a block to start
+// a new chord on that step; tap a block's first step to change or remove that chord.
 function chordLane() {
   const p = project;
+  const cols = { gridTemplateColumns: `repeat(${p.spb}, 1fr)` };
+  const blocks = chordSegments(p, page).map((seg) => {
+    const lbl = chordLabel(p, seg.ev);
+    const span = seg.end - seg.start;
+    const el = h('button', {
+      class: 'chord-block' + (seg.carried ? ' carried' : '') + (span <= 2 ? ' tight' : ''),
+      style: { gridColumn: `${seg.start + 1} / ${seg.end + 1}` },
+      title: `${lbl.sym} (${lbl.roman})`,
+    }, h('b', {}, lbl.sym), h('small', {}, lbl.roman));
+    el.onclick = (e) => {
+      const r = el.getBoundingClientRect();
+      const i = Math.min(span - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * span)));
+      chordPicker(page * p.spb + seg.start + i);
+    };
+    return el;
+  });
+  const ticks = [];
+  for (let i = 0; i < p.spb; i++) ticks.push(h('span', { class: 'tick' + (i % (p.spb === 12 ? 3 : 4) === 0 ? ' beat' : ''), 'data-s': page * p.spb + i }));
   return h('div', { class: 'chord-lane' },
-    h('div', { class: 'lane-label' }, 'Chords'),
-    h('div', { class: 'chord-cells' },
-      p.chords.map((r, i) => h('button', { class: 'chord-cell' + (i === page ? ' cur' : ''), onclick: () => chordPicker(i) },
-        h('b', {}, r), h('small', {}, chordSymbol(r, p.key, p.mode))))));
+    h('div', { class: 'lane-label' }, 'Chords', h('span', { class: 'chord-now' }, '')),
+    h('div', { class: 'chord-track', style: cols }, blocks),
+    h('div', { class: 'chord-ticks', style: cols }, ticks));
 }
 
-function chordPicker(bar) {
+async function previewChordAt(r) {
+  await unlockAudio();
+  const t = getCtx().currentTime + 0.01;
+  chordMidi(r, project.key, 55).forEach((n) => trigger('epiano', t, n, 0.8, 0.5));
+}
+
+function chordPicker(step) {
   const p = project;
-  const choose = (r) => {
-    p.chords[bar] = r;
+  const existing = p.chords.find((e) => e.s === step);
+  const sounding = chordAt(p, step);
+  const set = (r, b, sp) => {
+    p.chords = p.chords.filter((e) => e.s !== step);
+    const ev = { s: step, r };
+    if (b !== undefined && b !== null) ev.b = b;
+    if (sp) ev.sp = sp;
+    p.chords.push(ev);
+    sortChords(p);
     commit();
-    previewChord(r);
+    previewChordAt(r);
     close();
   };
+  // typed chord with a live read-out of what it means
+  const out = h('div', { class: 'type-out' });
+  const useBtn = h('button', { class: 'btn primary', disabled: true }, 'Use');
+  let parsed = null;
+  const input = h('input', {
+    class: 'grow', placeholder: 'Type a chord: Bb13, C#m7b5, F/A, bVII7…', autocapitalize: 'off', autocorrect: 'off', spellcheck: false,
+    oninput: (e) => {
+      parsed = parseChordInput(e.target.value, p.key);
+      useBtn.disabled = !parsed;
+      if (!e.target.value.trim()) return mount(out);
+      if (!parsed) return mount(out, h('span', { class: 'muted' }, "Not a chord I can read yet. Try a letter name plus a suffix, e.g. Ebmaj9."));
+      const lbl = chordLabel(p, parsed);
+      mount(out, h('b', {}, lbl.sym), h('span', { class: 'muted' }, ` · ${lbl.roman} in ${spell(p.key, p.key, p.mode)} · `), chordTones(parsed.r, p.key, p.mode).join(' '));
+    },
+    onkeydown: (e) => { if (e.key === 'Enter' && parsed) set(parsed.r, parsed.b, parsed.sp); },
+  });
+  useBtn.onclick = () => parsed && set(parsed.r, parsed.b, parsed.sp);
   const row = (label, list) => h('div', { class: 'pick-row' }, h('div', { class: 'pick-label' }, label),
-    h('div', { class: 'pick-grid' }, list.map((r) => h('button', { class: 'chip' + (p.chords[bar] === r ? ' on' : ''), onclick: () => choose(r) },
-      h('b', {}, r), h('small', {}, chordSymbol(r, p.key, p.mode))))));
+    h('div', { class: 'pick-grid' }, list.map((r) => h('button', { class: 'chip' + (existing && existing.r === r && existing.b == null ? ' on' : ''), onclick: () => set(r) },
+      h('b', {}, chordSymbol(r, p.key, p.mode)), h('small', {}, r)))));
+  const cur = chordLabel(p, sounding);
   const body = h('div', {},
-    row(`Diatonic (${SCALE_LABELS[p.mode]})`, diatonicChords(p.mode)),
-    row('Diatonic 7ths', diatonicChords(p.mode, true)),
+    h('p', { class: 'muted' }, existing ? `Changing ${cur.sym} (${cur.roman}).` : `${cur.sym} is sounding here. Pick a chord to start on this step.`),
+    h('div', { class: 'row' }, input, useBtn), out,
+    row(`In the key (${SCALE_LABELS[p.mode]})`, diatonicChords(p.mode)),
+    row('Sevenths', diatonicChords(p.mode, true)),
     row('Borrowed & colour', BORROWED.filter((r) => !diatonicChords(p.mode).includes(r))),
-    h('div', { class: 'pick-row' }, h('div', { class: 'pick-label' }, 'Whole progression'),
+    existing && step !== 0 && h('div', { class: 'actions' }, h('button', { class: 'btn ghost', onclick: () => {
+      p.chords = p.chords.filter((e) => e !== existing);
+      sortChords(p); commit(); close();
+    } }, 'Remove this chord change')),
+    h('div', { class: 'pick-row' }, h('div', { class: 'pick-label' }, 'Whole progression (one chord per bar, replaces all changes)'),
       h('div', { class: 'pick-grid' }, Object.values(PROGRESSIONS).map((pr) => h('button', { class: 'chip wide', onclick: () => {
-        p.chords = p.chords.map((_, i) => pr.chords[i % pr.chords.length]);
-        if (p.bars < pr.chords.length) toast(`Only ${p.bars} bar(s): set Bars to 4 for the full progression`);
-        commit();
-        close();
+        p.chords = Array.from({ length: p.bars }, (_, i) => ({ s: i * p.spb, r: pr.chords[i % pr.chords.length] }));
+        sortChords(p); commit(); close();
       } }, pr.label)))));
-  const close = sheet(`Bar ${bar + 1} chord`, body);
+  const close = sheet(`Bar ${Math.floor(step / p.spb) + 1}, step ${(step % p.spb) + 1}`, body);
 }
 
 // ---------- Tracks ----------
@@ -217,9 +287,13 @@ function trackPanel() {
       toast(`Bar ${page + 1} copied to all bars`);
     } }, 'Copy bar → all'),
     tr.kind === 'bass' && h('button', { class: 'btn small', onclick: () => {
-      for (let b = 0; b < p.bars; b++) tr.steps[b * p.spb] = mod12(chordRootPc(p.chords[b], p.key) - p.key);
+      // the lowest place on the neck for each chord's root (or its slash note)
+      for (const e of p.chords) {
+        const pc = e.b ?? parseRoman(e.r).semi;
+        tr.steps[e.s] = BASS_LOW + mod12(p.key + pc - 4) - bassBase(p.key);
+      }
       commit();
-      toast('Chord roots placed on beat 1 of each bar');
+      toast('Roots placed at every chord change');
     } }, 'Roots'),
   ];
   return h('div', { class: `panel layer-${tr.layer}` },
@@ -233,21 +307,23 @@ function trackPanel() {
     h('div', { class: 'toggles' },
       tr.kind !== 'drum' && h('button', { class: 'chip' + (tr.duck ? ' on' : ''), title: 'Sidechain: duck this track whenever a kick hits', onclick: () => { tr.duck = !tr.duck; commit(); } }, 'DUCK'),
       tr.kind !== 'drum' && select(tr.gate, [['short', 'Gate: short'], ['normal', 'Gate: normal'], ['legato', 'Gate: legato']], (v) => { tr.gate = v; commit(); }),
-      tr.kind !== 'drum' && h('span', { class: 'oct' }, 'Oct',
+      tr.kind !== 'drum' && tr.kind !== 'bass' && h('span', { class: 'oct' }, 'Oct',
         h('button', { class: 'chip', onclick: () => { tr.octave = Math.max(-2, tr.octave - 1); commit(); } }, '−'),
         h('b', {}, tr.octave),
         h('button', { class: 'chip', onclick: () => { tr.octave = Math.min(2, tr.octave + 1); commit(); } }, '+')),
       tools),
     isMelodic(tr) ? pianoRoll(tr) : h('p', { class: 'hint' }, tr.kind === 'drum'
       ? 'Tap a step: on → ghost (quiet) → off.'
-      : 'Chord hits play the chord set for that bar in the chord lane. Tap: on → soft → off.'));
+      : 'Chord hits play whatever chord is sounding in the chord track. Tap: on → soft → off.'));
 }
 
 function pianoRoll(tr) {
   const p = project;
   const off = page * p.spb;
+  const isBass = tr.kind === 'bass';
+  const [lo, hi] = isBass ? bassRange(p, setting('frets')) : [0, NOTE_RANGE.lead];
   const rows = [];
-  for (let r = NOTE_RANGE[tr.kind]; r >= 0; r--) {
+  for (let r = hi; r >= lo; r--) {
     const inside = inScale(r, p.mode);
     if (scaleLock && !inside) continue;
     const isRoot = mod12(r) === 0;
@@ -267,11 +343,17 @@ function pianoRoll(tr) {
       h('button', { class: 'roll-key' + (isRoot ? ' root' : ''), onclick: () => { tr._lastRow = r; preview(tr, midi); } }, keyedName(midi)),
       h('div', { class: 'steps', style: { gridTemplateColumns: `repeat(${p.spb}, 1fr)` } }, cells)));
   }
+  const scroller = h('div', { class: 'roll-scroll', onscroll: (e) => { rollScroll = e.target.scrollTop; } }, rows);
+  // open at the low end (where basslines live) the first time, then stay where you left it
+  requestAnimationFrame(() => { scroller.scrollTop = rollScroll ?? scroller.scrollHeight; });
+  const cur = chordLabel(p, chordAt(p, off));
   return h('div', { class: 'roll' },
     h('div', { class: 'roll-tools' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: scaleLock, onchange: (e) => { scaleLock = e.target.checked; render(); } }), ' Scale lock'),
-      h('span', { class: 'hint' }, `Bar ${page + 1} · chord ${p.chords[page]} (${chordSymbol(p.chords[page], p.key, p.mode)}) · highlighted rows are the key note`)),
-    rows);
+      h('span', { class: 'hint' }, isBass
+        ? `Low E to fret ${setting('frets')}, at the pitch you play it · bar ${page + 1} starts on ${cur.sym}`
+        : `Bar ${page + 1} starts on ${cur.sym} · highlighted rows are the key note`)),
+    scroller);
 }
 
 // ---------- Spectrum analyser ----------
@@ -312,16 +394,34 @@ function startSpectrum() {
 }
 
 // ---------- Project menu ----------
+const ago = (t) => {
+  const m = Math.round((Date.now() - (t || 0)) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
 function projectMenu() {
   const p = project;
-  const st = load();
   const songs = allSongs().filter((s) => s.sketch && isUnlocked(s));
+  const reopen = () => { close(); render(); };
   const body = h('div', { class: 'menu' },
-    h('label', { class: 'field wide' }, h('span', {}, 'Name'), h('input', { value: p.name, onchange: (e) => { p.name = e.target.value; commit(false); } })),
+    h('label', { class: 'field wide' }, h('span', {}, 'Name'), h('input', { value: p.name, onchange: (e) => { p.name = e.target.value || 'Untitled'; commit(); } })),
     h('div', { class: 'row' },
-      h('label', { class: 'field' }, h('span', {}, 'Bars'), select(p.bars, [1, 2, 4], (v) => { project = resize(p, +v, p.spb); page = 0; commit(); close(); })),
-      h('label', { class: 'field' }, h('span', {}, 'Grid'), select(p.spb, [[16, '16 (straight)'], [12, '12 (triplet)']], (v) => { project = resize(p, p.bars, +v); commit(); close(); })),
+      h('label', { class: 'field' }, h('span', {}, 'Bars'), select(p.bars, [...Array(MAX_BARS).keys()].map((i) => i + 1), (v) => { const id = p.id; Object.assign(p, resize(p, +v, p.spb), { id }); page = Math.min(page, p.bars - 1); commit(); reopen(); })),
+      h('label', { class: 'field' }, h('span', {}, 'Grid'), select(p.spb, [[16, '16 (straight)'], [12, '12 (triplet)']], (v) => { const id = p.id; Object.assign(p, resize(p, p.bars, +v), { id }); commit(); reopen(); })),
       p.spb === 16 && h('label', { class: 'field' }, h('span', {}, 'Swing'), h('input', { type: 'range', min: 0, max: 0.5, step: 0.01, value: p.swing, oninput: (e) => { p.swing = +e.target.value; }, onchange: () => commit(false) }))),
+    h('h4', {}, 'Projects'),
+    h('p', { class: 'hint' }, 'Everything saves as you go. Opening another project never overwrites this one.'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', onclick: () => { loadProject(newProject({ name: 'Untitled', bars: 4, chords: ['I', 'V', 'vi', 'IV'] })); reopen(); } }, 'New'),
+      h('button', { class: 'btn', onclick: () => { loadProject({ ...p, name: p.name + ' copy' }); toast('Duplicated. You are now in the copy.'); reopen(); } }, 'Duplicate')),
+    h('div', { class: 'list projects' }, listProjects().map((x) => h('div', { class: 'list-item' + (x.id === p.id ? ' cur' : '') },
+      h('button', { class: 'link', onclick: () => { openProject(x.id); page = 0; rollScroll = null; reopen(); } },
+        h('b', {}, x.name), h('small', {}, ` ${spell(x.key, x.key, x.mode)} ${x.mode} · ${x.bars} bar${x.bars > 1 ? 's' : ''} · ${ago(x.updated)}`)),
+      h('button', { class: 'btn ghost small', onclick: async () => {
+        if (!(await ask(`Delete "${x.name}"? This can't be undone.`, 'Delete'))) return;
+        deleteProject(x.id);
+        reopen();
+      } }, 'Delete')))),
     h('h4', {}, 'Export'),
     h('div', { class: 'row' },
       h('button', { class: 'btn', onclick: () => shareOrDownload(`${p.name || 'sketch'}.mid`, projectToMidi(p, 4), 'audio/midi') }, 'MIDI → Logic'),
@@ -329,19 +429,12 @@ function projectMenu() {
       h('button', { class: 'btn', onclick: async () => {
         const txt = await pickFile('.json,application/json');
         if (!txt) return;
-        try { loadProject(JSON.parse(txt)); close(); render(); toast('Loaded'); } catch (_) { toast('That file is not a Music Mind project'); }
+        try { loadProject(migrateImport(JSON.parse(txt))); reopen(); toast('Opened as a new project'); } catch (_) { toast('That file is not a Music Mind project'); }
       } }, 'Open .json')),
-    h('h4', {}, 'On this device'),
-    h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: () => { update((s) => { s.saved[p.name] = clone(p); }); toast(`Saved "${p.name}"`); close(); } }, 'Save'),
-      h('button', { class: 'btn', onclick: async () => { if (await ask('Start a new empty project? (Unsaved changes will be lost.)')) { loadProject(newProject({ name: 'Untitled', bars: 4, chords: ['I', 'V', 'vi', 'IV'] })); close(); render(); } } }, 'New')),
-    Object.keys(st.saved).length ? h('div', { class: 'list' }, Object.keys(st.saved).map((name) => h('div', { class: 'list-item' },
-      h('button', { class: 'link', onclick: () => { loadProject(st.saved[name]); close(); render(); } }, name),
-      h('button', { class: 'btn ghost small', onclick: async () => { if (await ask(`Delete "${name}"?`)) { update((s) => { delete s.saved[name]; }); close(); } } }, 'Delete')))) : null,
-    h('h4', {}, 'Concept demos'),
-    h('div', { class: 'row wrap' }, Object.entries(DEMOS).map(([id, d]) => h('button', { class: 'chip wide', onclick: () => { loadProject(fromSketch(d), 'demo:' + id); close(); render(); } }, d.name))),
+    h('h4', {}, 'Concept demos (open as new projects)'),
+    h('div', { class: 'row wrap' }, Object.entries(DEMOS).map(([id, d]) => h('button', { class: 'chip wide', onclick: () => { loadProject(fromSketch(d), 'demo:' + id); reopen(); } }, d.name))),
     h('h4', {}, 'Style sketches (from unlocked songs)'),
-    songs.length ? h('div', { class: 'row wrap' }, songs.map((s) => h('button', { class: 'chip wide', onclick: () => { loadProject(fromSketch(s.sketch), 'sketch:' + s.id); close(); render(); } }, `${s.sketch.name} · ${s.title}`))) : h('p', { class: 'hint' }, 'Unlock songs on the Path to get their sketches.'));
+    songs.length ? h('div', { class: 'row wrap' }, songs.map((s) => h('button', { class: 'chip wide', onclick: () => { loadProject(fromSketch(s.sketch), 'sketch:' + s.id); reopen(); } }, `${s.sketch.name} · ${s.title}`))) : h('p', { class: 'hint' }, 'Unlock songs on the Path to get their sketches.'));
   const close = sheet('Project', body);
 }
 
@@ -351,6 +444,7 @@ export function render(el) {
   if (!root) return;
   getProject();
   if (page >= project.bars) page = 0;
+  if (!project.tracks.find((t) => t.id === selected)) selected = 'kick';
   const scrollY = window.scrollY;
   mount(root,
     h('div', { class: 'studio' },
@@ -367,7 +461,11 @@ export function render(el) {
   player.onStep = (s) => {
     if (!root) return;
     root.querySelectorAll('.now').forEach((e) => e.classList.remove('now'));
-    if (s >= 0) root.querySelectorAll(`[data-s="${s}"]`).forEach((e) => e.classList.add('now'));
+    const readout = root.querySelector('.chord-now');
+    if (s >= 0) {
+      root.querySelectorAll(`[data-s="${s}"]`).forEach((e) => e.classList.add('now'));
+      if (readout) { const l = chordLabel(project, chordAt(project, s)); readout.textContent = ` · now ${l.sym} (${l.roman})`; }
+    } else if (readout) readout.textContent = '';
   };
   if (player.playing) startSpectrum();
 }

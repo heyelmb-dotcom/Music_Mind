@@ -1,5 +1,8 @@
 // Local persistence. Everything lives on this device; export/import for backups.
+import { migrate } from './project.js';
+
 const KEY = 'musicmind.v1';
+export const DEFAULT_SETTINGS = { bassPlay: 'up', frets: 20 };
 
 const defaults = () => ({
   concepts: {}, // id -> { passed: true, at: ISO date }
@@ -8,9 +11,32 @@ const defaults = () => ({
   journal: {}, // songId -> { missionIndex: text }
   songEdits: {}, // songId -> full song map overriding the built-in draft
   customSongs: [], // songs you mapped from scratch
-  project: null, // current Studio project
-  saved: {}, // name -> project
+  projects: {}, // id -> Studio project (every project autosaves)
+  currentId: null, // the project open in the Studio
+  settings: { ...DEFAULT_SETTINGS }, // bassPlay: 'up' | 'real' | 'both', frets: 20 | 22
 });
+
+const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// Older saves kept one current project plus a name -> project map; fold both into the library.
+function upgrade(st) {
+  const before = JSON.stringify(st);
+  const add = (p) => {
+    if (!p || !p.tracks) return null;
+    const id = p.id || newId();
+    st.projects[id] = { ...migrate(p), id, updated: p.updated || Date.now() };
+    return id;
+  };
+  for (const id of Object.keys(st.projects)) st.projects[id] = migrate(st.projects[id]);
+  if (st.project) { st.currentId = add(st.project); delete st.project; }
+  if (st.saved) {
+    for (const [name, p] of Object.entries(st.saved)) add({ ...p, name });
+    delete st.saved;
+  }
+  st.settings = { ...DEFAULT_SETTINGS, ...(st.settings || {}) };
+  st._upgraded = JSON.stringify(st) !== before;
+  return st;
+}
 
 let state = null;
 
@@ -18,10 +44,13 @@ export function load() {
   if (state) return state;
   try {
     const raw = localStorage.getItem(KEY);
-    state = raw ? { ...defaults(), ...JSON.parse(raw) } : defaults();
+    state = upgrade(raw ? { ...defaults(), ...JSON.parse(raw) } : defaults());
   } catch (_) {
     state = defaults();
   }
+  // write the upgraded shape straight away so ids and migrated notes stay stable
+  if (state._upgraded) save();
+  delete state._upgraded;
   return state;
 }
 
@@ -44,7 +73,7 @@ export function exportAll() {
 
 export function importAll(json) {
   const data = JSON.parse(json);
-  state = { ...defaults(), ...data };
+  state = upgrade({ ...defaults(), ...data });
   save();
 }
 
@@ -65,3 +94,37 @@ export function markKey(pc, mode) {
 }
 export const labelMode = () => load().labels || 'chord';
 export function setLabelMode(m) { update((s) => { s.labels = m; }); }
+
+// ---------- Settings ----------
+export const setting = (k) => load().settings?.[k] ?? DEFAULT_SETTINGS[k];
+export function setSetting(k, v) { update((s) => { s.settings[k] = v; }); }
+
+// ---------- Project library ----------
+export const listProjects = () => Object.values(load().projects).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+export const getProjectById = (id) => load().projects[id] || null;
+export const currentProject = () => getProjectById(load().currentId);
+
+// Add a project to the library (never replaces another) and optionally open it.
+export function addProject(p, open = true) {
+  const id = newId();
+  update((s) => {
+    s.projects[id] = { ...p, id, updated: Date.now() };
+    if (open) s.currentId = id;
+  });
+  return load().projects[id];
+}
+
+// Mark a project as edited and write it out (it is already the stored object).
+export function touchProject(p) {
+  p.updated = Date.now();
+  update((s) => { s.projects[p.id] = p; });
+}
+
+export function openProject(id) { update((s) => { s.currentId = id; }); }
+
+export function deleteProject(id) {
+  update((s) => {
+    delete s.projects[id];
+    if (s.currentId === id) s.currentId = listProjects()[0]?.id || null;
+  });
+}

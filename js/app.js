@@ -6,7 +6,7 @@ import * as ear from './views/ear.js';
 import * as songs from './views/songs.js';
 import * as bass from './views/bass.js';
 import * as keyView from './views/key.js';
-import { exportAll, importAll, resetProgress } from './store.js';
+import { exportAll, importAll, resetProgress, setting, setSetting } from './store.js';
 import { stopBus } from './audio.js';
 import { initDotField, revealDots } from './dotfield.js';
 
@@ -27,8 +27,9 @@ let enterTimer = 0;
 function route() {
   if (cleanup) { cleanup(); cleanup = null; }
   stopBus();
+  document.querySelectorAll('.sheet-wrap').forEach((e) => e.remove()); // menus never outlive their page
   const [pathPart, query] = (location.hash.slice(2) || 'key').split('?');
-  const [name, arg] = pathPart.split('/');
+  const [name, arg, arg2] = pathPart.split('/');
   const params = new URLSearchParams(query || '');
   if (name !== 'studio') studio.unmount();
   if (name === 'drill' && studio.player.playing) studio.player.stop();
@@ -40,7 +41,7 @@ function route() {
     case 'studio': studio.render(view); break;
     case 'key': cleanup = keyView.render(view, arg, params) || null; break;
     case 'path': path.render(view); break;
-    case 'bass': arg ? bass.renderLesson(view, arg) : bass.renderList(view); break;
+    case 'bass': arg === 'p' ? bass.renderProject(view, arg2) : arg ? bass.renderLesson(view, arg) : bass.renderList(view); break;
     case 'ear': ear.renderList(view); break;
     case 'drill': cleanup = ear.renderDrill(view, arg, params); break;
     case 'songs': songs.renderList(view); break;
@@ -59,7 +60,17 @@ function route() {
 }
 
 function settings() {
+  const seg = (k, options) => h('div', { class: 'seg' }, options.map(([v, label]) => h('button', {
+    class: 'seg-btn' + (setting(k) === v ? ' on' : ''),
+    onclick: (e) => { setSetting(k, v); e.target.parentNode.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('on', b === e.target)); },
+  }, label)));
   sheet('Music Mind', h('div', { class: 'menu' },
+    h('h4', {}, 'Bass playback'),
+    seg('bassPlay', [['up', 'Up an octave'], ['real', 'Real pitch'], ['both', 'Both']]),
+    h('p', { class: 'hint' }, 'Notes are always written and shown where you play them. Up an octave is easiest to hear on a phone speaker; Real pitch is the true register, for headphones or an amp; Both blends the two.'),
+    h('h4', {}, 'Your neck'),
+    seg('frets', [[20, '20 frets'], [22, '22 frets']]),
+    h('h4', {}, 'Your data'),
     h('p', {}, 'Everything (progress, song maps, journal, projects) is saved on this device only. Back it up now and then.'),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn', onclick: () => download(`music-mind-backup-${new Date().toISOString().slice(0, 10)}.json`, exportAll(), 'application/json') }, 'Back up everything'),

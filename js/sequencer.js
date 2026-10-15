@@ -1,7 +1,8 @@
 // Lookahead scheduler that plays a project live (edits apply instantly).
 import { getCtx, createChannel, trigger } from './audio.js';
 import { chordMidi } from './theory.js';
-import { BASE_MIDI, audibleTracks, gateSteps, hasHit, isMelodic } from './project.js';
+import { BASE_MIDI, audibleTracks, gateSteps, hasHit, isMelodic, chordAt, bassMidi } from './project.js';
+import { setting } from './store.js';
 
 const LOOKAHEAD = 0.12;
 const TICK_MS = 25;
@@ -12,7 +13,6 @@ export const stepSeconds = (p) => 60 / p.bpm / (p.spb / 4);
 export function scheduleStep(p, channels, s, t, muted) {
   const total = p.bars * p.spb;
   const sd = stepSeconds(p);
-  const bar = Math.floor(s / p.spb);
   const tracks = audibleTracks(p).filter((tr) => !muted || !muted.has(tr.id));
   for (const tr of tracks) {
     const v = tr.steps[s];
@@ -25,11 +25,18 @@ export function scheduleStep(p, channels, s, t, muted) {
         const beat = sd * (p.spb / 4);
         for (const other of p.tracks) if (other.duck && channels[other.id]) channels[other.id].duck(t, 0.8, Math.min(0.32, beat * 0.75));
       }
+    } else if (tr.kind === 'bass') {
+      // stored at real pitch; played up an octave, at real pitch, or both (Settings)
+      const real = bassMidi(p, v);
+      const dur = gateSteps(tr, s, total) * sd;
+      const mode = setting('bassPlay');
+      if (mode !== 'real') trigger(tr.voice, t, real + 12, dur, mode === 'both' ? 0.6 : 0.9, ch.input);
+      if (mode !== 'up') trigger(tr.voice, t, real, dur, 0.9, ch.input);
     } else if (isMelodic(tr)) {
       const midi = BASE_MIDI[tr.kind] + p.key + v + tr.octave * 12;
       trigger(tr.voice, t, midi, gateSteps(tr, s, total) * sd, 0.9, ch.input);
     } else {
-      const notes = chordMidi(p.chords[bar], p.key, BASE_MIDI.chords + 2 + tr.octave * 12);
+      const notes = chordMidi(chordAt(p, s).r, p.key, BASE_MIDI.chords + 2 + tr.octave * 12);
       const dur = gateSteps(tr, s, total) * sd;
       for (const n of notes) trigger(tr.voice, t, n, dur, (v || 1) * 0.55, ch.input);
     }

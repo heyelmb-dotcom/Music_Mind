@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoman, chordSymbol, chordMidi, diatonicChords, chordRootPc } from '../js/theory.js';
-import { fromSketch, resize, newProject, gateSteps, isMelodic } from '../js/project.js';
+import { parseRoman, chordSymbol, chordMidi, diatonicChords, chordRootPc, parseChordInput, chordTones, mod12 } from '../js/theory.js';
+import { fromSketch, resize, newProject, gateSteps, isMelodic, chordAt, chordSegments, migrate, bassMidi, sortChords } from '../js/project.js';
 import { projectToMidi } from '../js/midi.js';
 import { CONCEPTS, conceptById } from '../js/data/concepts.js';
 import { SONGS } from '../js/data/songs.js';
 import { DEMOS } from '../js/data/demos.js';
 
 test('roman numerals parse against the major scale', () => {
-  assert.deepEqual(parseRoman('bVII'), { semi: 10, quality: 'maj', roman: 'bVII' });
+  const b7 = parseRoman('bVII');
+  assert.equal(b7.semi, 10); assert.equal(b7.quality, 'maj'); assert.equal(b7.roman, 'bVII');
   assert.equal(parseRoman('vi').quality, 'min');
   assert.equal(parseRoman('ii7').quality, 'min7');
   assert.equal(parseRoman('V7').quality, 'dom7');
@@ -137,6 +138,55 @@ test('In Bloom workbench: power chords, roots, frets', async () => {
     const p = fromSketch(lessonSketch(l, v));
     const bass = p.tracks.find((t) => t.id === 'bass');
     assert.equal(bass.steps.length, p.bars * 16);
-    for (let b = 0; b < p.bars; b++) assert.equal((p.key + bass.steps[b * 16]) % 12, (p.key + parseRoman(p.chords[b]).semi) % 12, `${l.id}/${v.label} bar ${b + 1}`);
+    for (let b = 0; b < p.bars; b++) assert.equal(mod12(bass.steps[b * 16]), parseRoman(chordAt(p, b * 16).r).semi, `${l.id}/${v.label} bar ${b + 1}`);
   }
+});
+
+
+test('typed chords: symbols, extensions, slash bass, roman', () => {
+  const k = 10; // Bb
+  assert.deepEqual(parseChordInput('Ebmaj9', k), { r: 'IVmaj9', b: undefined, sp: 'b' });
+  assert.equal(chordSymbol(...Object.values({ r: 'bVI5' }), k, 'major', null, '#'), 'F#5');
+  assert.equal(chordTones('IVmaj9', k).join(' '), 'Eb G Bb D F');
+  assert.equal(chordTones(parseChordInput('Bb13', k).r, k).join(' '), 'Bb D F Ab C Eb G');
+  const fa = parseChordInput('F/A', k);
+  assert.equal(chordSymbol(fa.r, k, 'major', fa.b), 'F/A');
+  assert.equal(parseChordInput('C#m7b5', 4).r, 'viø7');
+  assert.equal(parseChordInput('bVII7', k).r, 'bVII7');
+  assert.equal(parseChordInput('nope', k), null);
+  // 13ths are thinned for playback but keep their identity
+  const n = chordMidi('I13', k);
+  assert.ok(n.length <= 5);
+});
+
+test('chord events: change on any step, segments per bar', () => {
+  const p = newProject({ bars: 2, spb: 16, key: 10, chords: ['I5'] });
+  p.chords.push({ s: 6, r: 'bVI5' }, { s: 20, r: 'IV5' });
+  sortChords(p);
+  assert.equal(chordAt(p, 5).r, 'I5');
+  assert.equal(chordAt(p, 6).r, 'bVI5');
+  assert.equal(chordAt(p, 17).r, 'I5');
+  const segs = chordSegments(p, 0).map((x) => [x.start, x.end, x.ev.r]);
+  assert.deepEqual(segs, [[0, 6, 'I5'], [6, 16, 'bVI5']]);
+  assert.equal(chordSegments(p, 1)[1].start, 4);
+});
+
+test('bars 1-8: new bars copy the last bar, chords included', () => {
+  const p = fromSketch({ bars: 2, spb: 16, key: 0, chords: ['I', 'V'], tracks: { kick: { p: 'x...............x.x.............' } } });
+  const r = resize(p, 4, 16);
+  const kick = r.tracks.find((t) => t.id === 'kick').steps;
+  assert.equal(kick.filter(Boolean).length, 1 + 2 * 3);
+  assert.deepEqual(r.chords.map((e) => [e.s, e.r]), [[0, 'I'], [16, 'V'], [32, 'V'], [48, 'V']]);
+  assert.equal(resize(p, 1, 16).chords.length, 1);
+});
+
+test('old projects migrate: chords become events, bass drops into the real register', () => {
+  const old = newProject({ bars: 2, key: 10 });
+  old.v = undefined;
+  old.chords = ['I5', 'bVI5'];
+  const bass = old.tracks.find((t) => t.id === 'bass');
+  bass.steps[0] = 0; // was Bb2 (36 + 10)
+  const m = migrate(old);
+  assert.deepEqual(m.chords.map((e) => e.r), ['I5', 'bVI5']);
+  assert.equal(bassMidi(m, m.tracks.find((t) => t.id === 'bass').steps[0]), 34); // Bb1: A string, fret 1
 });

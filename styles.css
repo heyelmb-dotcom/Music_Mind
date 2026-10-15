@@ -432,3 +432,58 @@ input[type=checkbox] { accent-color: var(--red); }
 #view { position: relative; z-index: 1; }
 #view.enter > * { animation: enter 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @keyframes enter { from { opacity: 0.001; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Chord track (Studio) */
+.chord-lane .lane-label { display: flex; gap: 4px; }
+.chord-now { color: var(--paper); letter-spacing: 0.04em; }
+.chord-track { display: grid; gap: 3px; }
+.chord-block {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; min-width: 0; overflow: hidden;
+  height: 52px; padding: 4px 8px; text-align: left; cursor: pointer;
+  background: linear-gradient(180deg, #24342c, #1c2923); border: 1px solid #3b5a4b; border-left: 3px solid var(--verdigris);
+  border-radius: 3px; color: var(--paper); font: inherit;
+}
+.chord-block.carried { border-left-style: dashed; opacity: 0.8; }
+.chord-block b { font: 600 18px/1.1 var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chord-block small { font: 10px var(--mono); color: #a8c4b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chord-block.tight { padding: 4px 3px; align-items: center; }
+.chord-block.tight b { font-size: 12px; }
+.chord-block.tight small { display: none; }
+.chord-ticks { display: grid; gap: 3px; margin-top: 3px; }
+.tick { height: 4px; border-radius: 1px; background: #26221b; }
+.tick.beat { background: #3a342a; }
+.tick.now { background: var(--paper); }
+.type-out { min-height: 1.4em; font: 13px var(--mono); margin: 2px 0 6px; }
+.type-out b { font: 600 17px var(--serif); color: var(--paper); }
+
+/* Studio note grid: scrolls inside the panel */
+.roll-scroll { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+
+/* Projects list (Studio menu) */
+.list.projects .list-item { padding: 4px 0; }
+.list.projects .list-item.cur .link b { color: var(--paper); }
+.list.projects .list-item.cur .link b::before { content: '● '; color: var(--red); }
+.list.projects .link b { font: 500 17px var(--serif); color: var(--text); }
+.list.projects .link small { font: 11px var(--mono); color: var(--muted); }
+
+/* Bass Lab: chord blocks over the line, your projects, the read view */
+.bv-chords { gap: 2px; }
+.bv-chord-block { display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 2px 6px; border-left: 2px solid var(--verdigris); background: #1f2b25; border-radius: 2px; }
+.bv-chord-block.carried { border-left-style: dashed; }
+.bv-chord-block b { font: 600 14px var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bv-chord-block small { font: 9px var(--mono); color: #a8c4b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-n { color: var(--verdigris); font-family: var(--serif); }
+.mine { margin-bottom: 12px; }
+.mine-item { border-color: #3b5a4b; }
+.tab { display: flex; flex-direction: column; gap: 10px; }
+.tab-head { font: 500 16px var(--serif); margin-bottom: 4px; }
+.tab-head .muted { font: 12px var(--mono); }
+.tab-notes { display: flex; flex-wrap: wrap; gap: 5px; }
+.tab-note { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 4px; align-items: baseline; min-width: 52px; padding: 5px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 3px; color: var(--text); cursor: pointer; font: inherit; }
+.tab-note .tab-str { font: 600 11px var(--mono); color: var(--muted); }
+.tab-note b { font: 700 20px var(--mono); color: var(--paper); }
+.tab-note small { grid-column: 1 / -1; font: 700 10px var(--mono); border-radius: 2px; padding: 0 4px; color: var(--ink); justify-self: start; }
+.tab-note.now { border-color: var(--paper); box-shadow: 0 0 12px rgba(233, 223, 199, 0.35); }
+.fb-cell.used .fb-dot { background: var(--paper); }
+.fb-cell.used .fb-dot.tonic { background: var(--red); }
+.fb-cell.now .fb-dot { background: var(--accent) !important; color: var(--ink) !important; transform: scale(1.18); box-shadow: 0 0 16px rgba(201, 162, 78, 0.8); }
